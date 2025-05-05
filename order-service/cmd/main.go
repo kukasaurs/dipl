@@ -52,7 +52,7 @@ func main() {
 	shutdownManager.Register(func(ctx context.Context) error {
 		log.Println("[SHUTDOWN] Closing Redis connection...")
 		return rdb.Close()
-	})
+	}) //example for push
 
 	// 4. Инициализация сервисов
 	orderRepo := repository.NewOrderRepository(db)
