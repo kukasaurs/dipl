@@ -41,10 +41,12 @@ func main() {
 	})
 
 	// 3. Инициализация Redis
+
 	opts, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
 		log.Fatal("Invalid Redis URL:", err)
 	}
+
 	rdb := redis.NewClient(opts)
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		log.Fatal("Failed to ping Redis:", err)

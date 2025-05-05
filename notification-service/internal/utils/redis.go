@@ -5,7 +5,7 @@ import (
 	"cleaning-app/notification-service/internal/services"
 	"context"
 	"encoding/json"
-	"github.com/redis/go-redis/v9"
+	redis2 "github.com/redis/go-redis/v9"
 	"log"
 )
 
@@ -18,31 +18,29 @@ type NotificationPayload struct {
 	Message string `json:"message"`
 }
 
-func SubscribeToRedis(ctx context.Context, rdb *redis.Client, notifService service.NotificationService) {
+func SubscribeToRedis(ctx context.Context, rdb *redis2.Client, notifService services.NotificationService) {
 	pubsub := rdb.Subscribe(ctx, RedisChannel)
 	ch := pubsub.Channel()
 
-	log.Println("Subscribed to Redis channel:", RedisChannel)
+	log.Println("✅ Subscribed to Redis channel:", RedisChannel)
 
 	for msg := range ch {
 		var payload NotificationPayload
-		err := json.Unmarshal([]byte(msg.Payload), &payload)
-		if err != nil {
-			log.Printf("Invalid notification payload: %v\n", err)
+		if err := json.Unmarshal([]byte(msg.Payload), &payload); err != nil {
+			log.Printf("❌ Invalid notification payload: %v\n", err)
 			continue
 		}
 
 		notif := &models.Notification{
 			UserID:  payload.UserID,
-			Role:    payload.Role,
 			Title:   payload.Title,
 			Message: payload.Message,
 		}
 
-		if err := notifService.Send(ctx, notif); err != nil {
-			log.Printf("Failed to save notification: %v\n", err)
+		if err := notifService.SendNotification(ctx, notif); err != nil {
+			log.Printf("❌ Failed to save notification: %v\n", err)
 		} else {
-			log.Printf("Notification saved: %+v\n", notif)
+			log.Printf("📨 Notification saved: %+v\n", notif)
 		}
 	}
 }

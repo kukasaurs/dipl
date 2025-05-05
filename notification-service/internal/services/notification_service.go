@@ -1,33 +1,30 @@
-package service
+package services
 
 import (
 	"cleaning-app/notification-service/internal/models"
 	"cleaning-app/notification-service/internal/repository"
 	"context"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-type NotificationService interface {
-	Send(ctx context.Context, notif *models.Notification) error
-	GetAll(ctx context.Context, userID string) ([]models.Notification, error)
-	MarkAsRead(ctx context.Context, id string) error
+type NotificationService struct {
+	repo *repository.NotificationRepository
 }
 
-type notifService struct {
-	repo repository.NotificationRepository
+func NewNotificationService(repo *repository.NotificationRepository) *NotificationService {
+	return &NotificationService{repo: repo}
 }
 
-func NewNotificationService(repo repository.NotificationRepository) NotificationService {
-	return &notifService{repo: repo}
+func (s *NotificationService) SendNotification(ctx context.Context, n *models.Notification) error {
+	// Здесь можно добавить логику отправки через push, email или SMS
+	// В зависимости от n.Type
+	return s.repo.Create(ctx, n)
 }
 
-func (s *notifService) Send(ctx context.Context, notif *models.Notification) error {
-	return s.repo.Create(ctx, notif)
+func (s *NotificationService) GetNotifications(ctx context.Context, userID string, limit, offset int64) ([]models.Notification, error) {
+	return s.repo.GetByUserID(ctx, userID, limit, offset)
 }
 
-func (s *notifService) GetAll(ctx context.Context, userID string) ([]models.Notification, error) {
-	return s.repo.List(ctx, userID)
-}
-
-func (s *notifService) MarkAsRead(ctx context.Context, id string) error {
+func (s *NotificationService) MarkAsRead(ctx context.Context, id primitive.ObjectID) error {
 	return s.repo.MarkAsRead(ctx, id)
 }

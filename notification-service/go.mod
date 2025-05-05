@@ -11,7 +11,7 @@ require (
 )
 
 require (
-	github.com/go-redis/redis/v8 v8.11.5
+
 	github.com/redis/go-redis/v9 v9.7.3
 )
 

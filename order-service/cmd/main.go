@@ -16,56 +16,57 @@ import (
 )
 
 func main() {
-	// 1. Базовый контекст + менеджер завершения
+	// 1. Создание базового контекста и менеджера завершения
 	baseCtx := context.Background()
 	ctx, shutdownManager := utils.NewShutdownManager(baseCtx)
 	shutdownManager.StartListening()
 
+	// 2. Загрузка конфигурации
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatal("Failed to load config:", err)
+		log.Fatal("Не удалось загрузить конфигурацию:", err)
 	}
 
-	// 2. Инициализация MongoDB
+	// 3. Инициализация MongoDB
 	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoURI))
 	if err != nil {
-		log.Fatal("Failed to connect to MongoDB:", err)
+		log.Fatal("Не удалось подключиться к MongoDB:", err)
 	}
 	db := mongoClient.Database("cleaning_service")
 
-	// Зарегистрировать Mongo для Graceful Shutdown
+	// Регистрация MongoDB для graceful shutdown
 	shutdownManager.Register(func(ctx context.Context) error {
-		log.Println("[SHUTDOWN] Closing MongoDB connection...")
+		log.Println("[SHUTDOWN] Закрытие соединения с MongoDB...")
 		return mongoClient.Disconnect(ctx)
 	})
 
-	// 3. Инициализация Redis
+	// 4. Инициализация Redis
 	opts, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
-		log.Fatal("Invalid Redis URL:", err)
+		log.Fatal("Неверный URL Redis:", err)
 	}
 	rdb := redis.NewClient(opts)
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Fatal("Failed to ping Redis:", err)
+		log.Fatal("Не удалось выполнить ping Redis:", err)
 	}
 
+	// Регистрация Redis для graceful shutdown
 	shutdownManager.Register(func(ctx context.Context) error {
-		log.Println("[SHUTDOWN] Closing Redis connection...")
+		log.Println("[SHUTDOWN] Закрытие соединения с Redis...")
 		return rdb.Close()
-	}) //example for push
+	})
 
-	// 4. Инициализация сервисов
+	// 5. Инициализация сервисов
 	orderRepo := repository.NewOrderRepository(db)
 	notifier := services.NewNotificationService()
 	orderService := services.NewOrderService(orderRepo, notifier, rdb)
-
 	orderHandler := handler.NewOrderHandler(orderService)
 
-	// 5. Старт фонового кэш-рефрешера
+	// 6. Запуск фонового обновления кэша
 	cacheRefresher := services.NewCacheRefresher(orderService, rdb)
 	cacheRefresher.Start(ctx)
 
-	// 6. Настройка роутера
+	// 7. Настройка маршрутов
 	router := gin.Default()
 	router.Use(utils.AuthMiddleware(cfg.AuthServiceURL))
 
@@ -92,29 +93,28 @@ func main() {
 			protectedCleaner.GET("/my", orderHandler.GetMyAssignedOrders)
 			protectedCleaner.GET("/:id", orderHandler.GetOrderDetails)
 			protectedCleaner.PUT("/:id/reject", orderHandler.RejectAssignedOrder)
-
 		}
 	}
 
-	// 7. Запуск сервера
+	// 8. Запуск HTTP-сервера
 	server := &http.Server{
-		Addr:    ":8001",
+		Addr:    cfg.ServerPort,
 		Handler: router,
 	}
 
 	go func() {
-		log.Println("Order service running on :8001")
+		log.Println("Сервис заказов запущен на порту :8001")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v", err)
+			log.Fatalf("Ошибка сервера: %v", err)
 		}
 	}()
 
-	// Регистрация graceful shutdown сервера
+	// Регистрация graceful shutdown для сервера
 	shutdownManager.Register(func(ctx context.Context) error {
-		log.Println("[SHUTDOWN] Shutting down HTTP server...")
+		log.Println("[SHUTDOWN] Остановка HTTP-сервера...")
 		return server.Shutdown(ctx)
 	})
 
-	// Всё остальное делает shutdownManager
+	// Ожидание завершения
 	select {}
 }

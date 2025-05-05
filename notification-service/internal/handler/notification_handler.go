@@ -1,47 +1,61 @@
-package http
+package handler
 
 import (
-	service "cleaning-app/notification-service/internal/services"
-	"context"
+	"cleaning-app/notification-service/internal/services"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-type Handler struct {
-	service service.NotificationService
+type NotificationHandler struct {
+	service *services.NotificationService
 }
 
-func NewHandler(service service.NotificationService) *Handler {
-	return &Handler{service: service}
+func NewNotificationHandler(service *services.NotificationService) *NotificationHandler {
+	return &NotificationHandler{service: service}
 }
 
-func (h *Handler) GetNotifications(c *gin.Context) {
+func (h *NotificationHandler) GetNotifications(c *gin.Context) {
 	userID := c.Query("user_id")
-	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
+	limitStr := c.DefaultQuery("limit", "10")
+	offsetStr := c.DefaultQuery("offset", "0")
+
+	limit, err := strconv.ParseInt(limitStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid limit"})
 		return
 	}
 
-	notifs, err := h.service.GetAll(context.Background(), userID)
+	offset, err := strconv.ParseInt(offsetStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch notifications"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid offset"})
 		return
 	}
-	c.JSON(http.StatusOK, notifs)
+
+	notifications, err := h.service.GetNotifications(c.Request.Context(), userID, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get notifications"})
+		return
+	}
+
+	c.JSON(http.StatusOK, notifications)
 }
 
-func (h *Handler) MarkAsRead(c *gin.Context) {
-	id := c.Param("id")
-	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "notification ID is required"})
+func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := primitive.ObjectIDFromHex(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
 		return
 	}
 
-	err := h.service.MarkAsRead(context.Background(), id)
+	err = h.service.MarkAsRead(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not mark as read"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to mark as read"})
 		return
 	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "marked as read"})
 }

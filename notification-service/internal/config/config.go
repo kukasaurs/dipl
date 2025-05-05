@@ -8,6 +8,7 @@ import (
 type Config struct {
 	MongoURI       string
 	RedisURL       string
+	ServerPort     string
 	AuthServiceURL string
 }
 
@@ -19,6 +20,7 @@ func LoadConfig() (*Config, error) {
 	return &Config{
 		MongoURI:       os.Getenv("MONGO_URI"),
 		RedisURL:       os.Getenv("REDIS_URL"),
+		ServerPort:     os.Getenv("SERVER_PORT"),
 		AuthServiceURL: os.Getenv("AUTH_SERVICE_URL"),
 	}, nil
 }

@@ -1,51 +1,94 @@
-// 📁 notification-service/main.go
 package main
 
 import (
+	"context"
+	"log"
+	"net/http"
+
+	"cleaning-app/notification-service/internal/config"
 	"cleaning-app/notification-service/internal/handler"
 	"cleaning-app/notification-service/internal/repository"
-	service "cleaning-app/notification-service/internal/services"
+	"cleaning-app/notification-service/internal/services"
 	"cleaning-app/notification-service/internal/utils"
-	"context"
-	"github.com/redis/go-redis/v9"
-	"log"
-	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func main() {
-	r := gin.Default()
-	ctx := context.Background()
+	// 1. Контекст и shutdown-менеджер
+	baseCtx := context.Background()
+	ctx, shutdownManager := utils.NewShutdownManager(baseCtx)
+	shutdownManager.StartListening()
 
-	// Mongo setup
-	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:27017"))
+	// 2. Загрузка конфигурации
+	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatal(err)
-	}
-	db := mongoClient.Database("notifications")
-	notifRepo := repository.NewMongoNotificationRepo(db)
-
-	// Redis setup
-	redisClient := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
-
-	notifService := service.NewNotificationService(notifRepo)
-	go utils.SubscribeToRedis(ctx, redisClient, notifService)
-
-	h := http.NewHandler(notifService)
-	r.GET("/notifications", h.GetNotifications)
-	r.PUT("/notifications/:id/read", h.MarkAsRead)
-
-	s := &http.Server{
-		Addr:         ":8002",
-		Handler:      r,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  30 * time.Second,
+		log.Fatal("Failed to load config:", err)
 	}
 
-	log.Println("Notification Service running on :8002")
-	s.ListenAndServe()
+	// 3. Подключение к MongoDB
+	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoURI))
+	if err != nil {
+		log.Fatal("Failed to connect to MongoDB:", err)
+	}
+	db := mongoClient.Database("cleaning_service")
+
+	shutdownManager.Register(func(ctx context.Context) error {
+		log.Println("[SHUTDOWN] Closing MongoDB connection...")
+		return mongoClient.Disconnect(ctx)
+	})
+
+	// 4. Подключение к Redis
+	redisOpts, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		log.Fatal("Invalid Redis URL:", err)
+	}
+	rdb := redis.NewClient(redisOpts)
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		log.Fatal("Failed to ping Redis:", err)
+	}
+
+	shutdownManager.Register(func(ctx context.Context) error {
+		log.Println("[SHUTDOWN] Closing Redis connection...")
+		return rdb.Close()
+	})
+
+	// 5. Инициализация слоев
+	repo := repository.NewNotificationRepository(db)
+	notificationService := services.NewNotificationService(repo)
+	notificationHandler := handler.NewNotificationHandler(notificationService)
+
+	// 6. Инициализация маршрутов
+	router := gin.Default()
+	router.Use(utils.AuthMiddleware(cfg.AuthServiceURL))
+
+	api := router.Group("/api/notifications")
+	{
+		api.GET("/", notificationHandler.GetNotifications)
+		api.PUT("/:id/read", notificationHandler.MarkAsRead)
+	}
+
+	// 7. Запуск HTTP сервера
+	server := &http.Server{
+		Addr:    cfg.ServerPort,
+		Handler: router,
+	}
+
+	go func() {
+		log.Println("Notification service running on: 8002")
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server error: %v", err)
+		}
+	}()
+
+	shutdownManager.Register(func(ctx context.Context) error {
+		log.Println("[SHUTDOWN] Shutting down HTTP server...")
+		return server.Shutdown(ctx)
+	})
+
+	// Ожидаем завершения
+	select {}
 }

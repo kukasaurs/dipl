@@ -12,7 +12,10 @@ require (
 	google.golang.org/api v0.228.0
 )
 
-require github.com/redis/go-redis/v9 v9.7.3
+require (
+	github.com/go-redis/redis/v8 v8.11.5
+	github.com/redis/go-redis/v9 v9.7.3
+)
 
 require (
 	cloud.google.com/go/auth v0.15.0 // indirect
