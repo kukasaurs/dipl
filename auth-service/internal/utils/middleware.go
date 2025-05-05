@@ -1,0 +1,42 @@
+package utils
+
+import (
+	"fmt"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v4"
+	"net/http"
+	"strings"
+)
+
+func AuthMiddleware(jwtUtil *JWTUtil, redis *RedisClient) gin.HandlerFunc {
+	return func(c *gin.Context) {
+
+		tokenStr := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
+		if tokenStr == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing token"})
+			return
+		}
+
+		token, err := jwtUtil.ValidateToken(tokenStr)
+		if err != nil || !token.Valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token claims"})
+			return
+		}
+
+		jti, _ := claims["jti"].(string)
+		if jti != "" && redis.Exists(c.Request.Context(), fmt.Sprintf("blacklist:%s", jti)) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token has been revoked"})
+			return
+		}
+
+		c.Set("user_id", claims["user_id"])
+		c.Set("role", claims["role"])
+		c.Next()
+	}
+}
