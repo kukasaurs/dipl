@@ -90,7 +90,7 @@ func main() {
 		protectedCleaner.Use(utils.RequireRoles("cleaner"))
 		{
 			protectedCleaner.PUT("/:id/confirm", orderHandler.ConfirmCompletion)
-			protectedCleaner.GET("/my", orderHandler.GetMyAssignedOrders)
+			protectedCleaner.GET("/cleaner/my", orderHandler.GetMyAssignedOrders)
 			protectedCleaner.GET("/:id", orderHandler.GetOrderDetails)
 			protectedCleaner.PUT("/:id/reject", orderHandler.RejectAssignedOrder)
 		}
