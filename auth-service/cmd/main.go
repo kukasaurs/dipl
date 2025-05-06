@@ -71,6 +71,7 @@ func main() {
 	googleAuth := services.NewGoogleAuthService(cfg.GoogleClientID)
 
 	authService := services.NewAuthService(userRepo, jwtUtil, googleAuth, emailService, utils.WrapRedisClient(rdb))
+
 	authHandler := handlers.NewAuthHandler(authService)
 
 	// 6. Настройка Gin сервера

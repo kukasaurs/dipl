@@ -10,6 +10,10 @@ type Config struct {
 	RedisURL       string
 	ServerPort     string
 	AuthServiceURL string
+	SMTPHost       string
+	SMTPPort       string
+	SMTPUser       string
+	SMTPPass       string
 }
 
 // LoadConfig подгружает переменные окружения из .env
@@ -22,5 +26,9 @@ func LoadConfig() (*Config, error) {
 		RedisURL:       os.Getenv("REDIS_URL"),
 		ServerPort:     os.Getenv("SERVER_PORT"),
 		AuthServiceURL: os.Getenv("AUTH_SERVICE_URL"),
+		SMTPHost:       os.Getenv("SMTP_HOST"),
+		SMTPPort:       os.Getenv("SMTP_PORT"),
+		SMTPUser:       os.Getenv("SMTP_USER"),
+		SMTPPass:       os.Getenv("SMTP_PASS"),
 	}, nil
 }

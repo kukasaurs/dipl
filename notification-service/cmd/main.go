@@ -58,27 +58,35 @@ func main() {
 
 	// 5. Инициализация слоев
 	repo := repository.NewNotificationRepository(db)
-	notificationService := services.NewNotificationService(repo)
+	notificationService := services.NewNotificationService(repo, rdb)
 	notificationHandler := handler.NewNotificationHandler(notificationService)
 
-	// 6. Инициализация маршрутов
-	router := gin.Default()
-	router.Use(utils.AuthMiddleware(cfg.AuthServiceURL))
+	// 6. Запуск подписки на Redis
+	go notificationService.StartRedisSubscribers(ctx)
 
+	// 7. Инициализация маршрутов
+	router := gin.Default()
 	api := router.Group("/api/notifications")
 	{
-		api.GET("/", notificationHandler.GetNotifications)
-		api.PUT("/:id/read", notificationHandler.MarkAsRead)
+		// Публичные маршруты
+		api.POST("/send", notificationHandler.SendManualNotification)
+
+		// Защищенные маршруты
+		secured := api.Group("/", utils.AuthMiddleware(cfg.AuthServiceURL))
+		{
+			secured.GET("/", notificationHandler.GetNotifications)
+			secured.PUT("/:id/read", notificationHandler.MarkAsRead)
+		}
 	}
 
-	// 7. Запуск HTTP сервера
+	// 8. Запуск HTTP сервера
 	server := &http.Server{
 		Addr:    cfg.ServerPort,
 		Handler: router,
 	}
 
 	go func() {
-		log.Println("Notification service running on: 8002")
+		log.Println("Notification service running on port", cfg.ServerPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}

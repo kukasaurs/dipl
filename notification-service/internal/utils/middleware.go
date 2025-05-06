@@ -2,56 +2,68 @@ package utils
 
 import (
 	"encoding/json"
-	"fmt"
-	"io/ioutil"
+	"github.com/gin-gonic/gin"
+	"log"
 	"net/http"
 	"strings"
-
-	"github.com/gin-gonic/gin"
+	"time"
 )
 
-type AuthResponse struct {
-	UserID string `json:"userId"`
+type AuthData struct {
+	UserID        string `json:"user_id"`
+	Role          string `json:"role"`
+	ResetRequired bool   `json:"reset_required"`
 }
 
-// AuthMiddleware проверяет токен у Auth Service и кладёт userID в контекст
-func AuthMiddleware(authServiceURL string) gin.HandlerFunc {
+func AuthMiddleware(authURL string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authorization header required"})
+		log.Printf("[AUTH] Using auth service at: %s", authURL)
+
+		token := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
+		if token == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token missing"})
 			return
 		}
 
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header"})
-			return
-		}
-		token := parts[1]
-
-		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/validate", authServiceURL), nil)
+		req, err := http.NewRequest("GET", authURL+"/api/auth/validate", nil)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "auth request build failed"})
+			log.Printf("[AUTH] Failed to create request: %v", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 			return
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
 
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil || resp.StatusCode != http.StatusOK {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		req.Header.Set("Authorization", "Bearer "+token)
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("[AUTH] Error calling auth service: %v", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Auth service unavailable"})
 			return
 		}
 		defer resp.Body.Close()
 
-		body, _ := ioutil.ReadAll(resp.Body)
-		var authResp AuthResponse
-		if err := json.Unmarshal(body, &authResp); err != nil || authResp.UserID == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid auth response"})
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("[AUTH] Auth service returned status: %d", resp.StatusCode)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token invalid"})
 			return
 		}
 
-		c.Set("userID", authResp.UserID)
+		var data AuthData
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			log.Printf("[AUTH] Failed to decode auth response: %v", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Invalid response from auth service"})
+			return
+		}
+
+		// Проверяем reset_required
+		if data.ResetRequired {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Password reset required"})
+			return
+		}
+
+		log.Printf("[AUTH] Authenticated user: %s with role: %s", data.UserID, data.Role)
+		c.Set("userId", data.UserID)
+		c.Set("role", data.Role)
 		c.Next()
 	}
 }
