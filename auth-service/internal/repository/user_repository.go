@@ -29,6 +29,7 @@ func (r *UserRepository) CreateUser(user *models.User) (*models.User, error) {
 	}
 
 	user.ID = result.InsertedID.(primitive.ObjectID)
+
 	return user, nil
 }
 

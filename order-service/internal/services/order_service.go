@@ -1,8 +1,10 @@
 package services
 
 import (
+	"cleaning-app/order-service/internal/config"
 	"cleaning-app/order-service/internal/models"
 	"cleaning-app/order-service/internal/repository"
+	"cleaning-app/order-service/internal/utils"
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
@@ -15,10 +17,6 @@ import (
 	"time"
 )
 
-type NotificationService interface {
-	SendOrderNotification(ctx context.Context, order models.Order, event string) error
-}
-
 type OrderService interface {
 	CreateOrder(ctx context.Context, order *models.Order) error
 	UpdateOrder(ctx context.Context, id primitive.ObjectID, updated *models.Order) error
@@ -30,17 +28,16 @@ type OrderService interface {
 	GetAllOrders(ctx context.Context) ([]models.Order, error)
 	GetOrdersByClient(ctx context.Context, clientID string) ([]models.Order, error)
 	FilterOrders(ctx context.Context, filter map[string]interface{}) ([]models.Order, error)
-	RejectOrder(ctx context.Context, id primitive.ObjectID, id2 string) error
 }
 
 type orderService struct {
-	repo     repository.OrderRepository
-	notifier NotificationService
-	redis    *redis.Client
+	repo  repository.OrderRepository
+	redis *redis.Client
+	cfg   *config.Config
 }
 
-func NewOrderService(repo repository.OrderRepository, notifier NotificationService, redis *redis.Client) OrderService {
-	return &orderService{repo, notifier, redis}
+func NewOrderService(repo repository.OrderRepository, redis *redis.Client, cfg *config.Config) OrderService {
+	return &orderService{repo, redis, cfg}
 }
 
 func (s *orderService) CreateOrder(ctx context.Context, order *models.Order) error {
@@ -56,8 +53,15 @@ func (s *orderService) CreateOrder(ctx context.Context, order *models.Order) err
 	if err := s.redis.Del(ctx, fmt.Sprintf("orders_by_client:%s", order.ClientID)).Err(); err != nil {
 		log.Printf("Failed to invalidate cache: %v", err)
 	}
-	return s.notifier.SendOrderNotification(ctx, *order, "created")
-
+	utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
+		UserID:       order.ClientID,
+		Role:         "user",
+		Title:        "Создан заказа",
+		Message:      "Детали вашего заказа можно посмотреть на странице.",
+		Type:         "order_created",
+		DeliveryType: "push",
+	})
+	return nil
 }
 
 func (s *orderService) UpdateOrder(ctx context.Context, id primitive.ObjectID, updated *models.Order) error {
@@ -80,7 +84,28 @@ func (s *orderService) UpdateOrder(ctx context.Context, id primitive.ObjectID, u
 		log.Printf("Failed to invalidate cache: %v", err)
 	}
 
-	return s.notifier.SendOrderNotification(ctx, *existing, "updated")
+	// Уведомление об изменении заказа
+	utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
+		UserID:       existing.ClientID,
+		Role:         "user",
+		Title:        "Обновление заказа",
+		Message:      "Детали вашего заказа были изменены.",
+		Type:         "order_updated",
+		DeliveryType: "push",
+	})
+
+	if existing.CleanerID != nil {
+		utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
+			UserID:       *existing.CleanerID,
+			Role:         "cleaner",
+			Title:        "Обновление заказа",
+			Message:      "Детали вашего заказа были изменены.",
+			Type:         "order_updated",
+			DeliveryType: "push",
+		})
+	}
+
+	return nil
 }
 
 func (s *orderService) DeleteOrder(ctx context.Context, id primitive.ObjectID) error {
@@ -98,7 +123,28 @@ func (s *orderService) DeleteOrder(ctx context.Context, id primitive.ObjectID) e
 		log.Printf("Failed to invalidate cache: %v", err)
 	}
 
-	return s.notifier.SendOrderNotification(ctx, *order, "deleted")
+	// Уведомление об удалении заказа
+	utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
+		UserID:       order.ClientID,
+		Role:         "user",
+		Title:        "Заказ удалён",
+		Message:      "Один из ваших заказов был удалён.",
+		Type:         "order_deleted",
+		DeliveryType: "push",
+	})
+
+	if order.CleanerID != nil {
+		utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
+			UserID:       *order.CleanerID,
+			Role:         "cleaner",
+			Title:        "Заказ удалён",
+			Message:      "Один из ваших заказов был удалён.",
+			Type:         "order_deleted",
+			DeliveryType: "push",
+		})
+	}
+
+	return nil
 }
 
 func (s *orderService) AssignCleaner(ctx context.Context, id primitive.ObjectID, cleanerID string) error {
@@ -112,13 +158,37 @@ func (s *orderService) AssignCleaner(ctx context.Context, id primitive.ObjectID,
 	order.CleanerID = &cleanerID
 	order.Status = models.StatusAssigned
 
+	if err := s.repo.Update(ctx, order); err != nil {
+		return err
+	}
+
 	cacheKey := fmt.Sprintf("orders_by_client:%s", order.ClientID)
 	_ = s.redis.Del(ctx, cacheKey).Err()
 	if err := s.redis.Del(ctx, cacheKey).Err(); err != nil {
 		log.Printf("Failed to invalidate cache: %v", err)
 	}
 
-	return s.repo.Update(ctx, order)
+	// Уведомление клиенту о подтверждении заказа
+	utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
+		UserID:       order.ClientID,
+		Role:         "user",
+		Title:        "Заказ подтвержден",
+		Message:      "Ваш заказ успешно подтвержден и будет выполнен в назначенное время.",
+		Type:         "order_confirmed",
+		DeliveryType: "push",
+	})
+
+	// Уведомление клинеру о новом заказе
+	utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
+		UserID:       cleanerID,
+		Role:         "cleaner",
+		Title:        "Новый заказ",
+		Message:      "Вам назначен новый заказ. Проверьте детали в вашем профиле.",
+		Type:         "assigned_order",
+		DeliveryType: "push",
+	})
+
+	return nil
 }
 
 func (s *orderService) UnassignCleaner(ctx context.Context, id primitive.ObjectID) error {
@@ -143,10 +213,24 @@ func (s *orderService) ConfirmCompletion(ctx context.Context, id primitive.Objec
 	order.Status = models.StatusCompleted
 	order.PhotoURL = &photoURL
 
+	if err := s.repo.Update(ctx, order); err != nil {
+		return err
+	}
+
 	cacheKey := fmt.Sprintf("orders_by_client:%s", order.ClientID)
 	_ = s.redis.Del(ctx, cacheKey).Err()
 
-	return s.repo.Update(ctx, order)
+	// Уведомление клиенту о завершении уборки
+	utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
+		UserID:       order.ClientID,
+		Role:         "user",
+		Title:        "Уборка завершена",
+		Message:      "Уборка успешно завершена. Пожалуйста, оцените качество!",
+		Type:         "cleaning_completed",
+		DeliveryType: "push",
+	})
+
+	return nil
 }
 
 func (s *orderService) GetOrderByID(ctx context.Context, id primitive.ObjectID) (*models.Order, error) {
@@ -230,25 +314,60 @@ func (s *orderService) FilterOrders(ctx context.Context, filter map[string]inter
 
 	return orders, nil
 }
-func (s *orderService) RejectOrder(ctx context.Context, id primitive.ObjectID, cleanerID string) error {
-	order, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return err
+
+// SendOrderNotification реализация интерфейса NotificationService
+func (s *orderService) SendOrderNotification(ctx context.Context, order models.Order, event string) error {
+	switch event {
+	case "created":
+		// Уведомление о создании заказа
+		utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
+			UserID:       order.ClientID,
+			Role:         "user",
+			Title:        "Заказ создан",
+			Message:      "Ваш заказ успешно создан и ожидает подтверждения.",
+			Type:         "order_created",
+			DeliveryType: "push",
+		})
+	case "updated":
+		// Уведомление об изменении заказа
+		utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
+			UserID:       order.ClientID,
+			Role:         "user",
+			Title:        "Обновление заказа",
+			Message:      "Детали вашего заказа были изменены.",
+			Type:         "order_updated",
+			DeliveryType: "push",
+		})
+		if order.CleanerID != nil {
+			utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
+				UserID:       *order.CleanerID,
+				Role:         "cleaner",
+				Title:        "Обновление заказа",
+				Message:      "Детали вашего заказа были изменены.",
+				Type:         "order_updated",
+				DeliveryType: "push",
+			})
+		}
+	case "deleted":
+		// Уведомление об удалении заказа
+		utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
+			UserID:       order.ClientID,
+			Role:         "user",
+			Title:        "Заказ удалён",
+			Message:      "Один из ваших заказов был удалён.",
+			Type:         "order_deleted",
+			DeliveryType: "push",
+		})
+		if order.CleanerID != nil {
+			utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
+				UserID:       *order.CleanerID,
+				Role:         "cleaner",
+				Title:        "Заказ удалён",
+				Message:      "Один из ваших заказов был удалён.",
+				Type:         "order_deleted",
+				DeliveryType: "push",
+			})
+		}
 	}
-
-	if order.CleanerID == nil || *order.CleanerID != cleanerID {
-		return errors.New("order not assigned to this cleaner")
-	}
-
-	order.CleanerID = nil
-	order.Status = models.StatusPending
-
-	if err := s.repo.Update(ctx, order); err != nil {
-		return err
-	}
-
-	cacheKey := fmt.Sprintf("orders_by_client:%s", order.ClientID)
-	_ = s.redis.Del(ctx, cacheKey).Err()
-
-	return s.notifier.SendOrderNotification(ctx, *order, "rejected")
+	return nil
 }

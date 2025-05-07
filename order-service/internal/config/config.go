@@ -1,4 +1,3 @@
-// internal/config/config.go
 package config
 
 import (
@@ -7,11 +6,12 @@ import (
 )
 
 type Config struct {
-	MongoURI       string
-	JWTSecret      string
-	ServerPort     string
-	AuthServiceURL string
-	RedisURL       string
+	MongoURI         string
+	JWTSecret        string
+	ServerPort       string
+	AuthServiceURL   string
+	RedisURL         string
+	NotifiServiceURL string
 }
 
 func LoadConfig() (*Config, error) {
@@ -20,10 +20,11 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &Config{
-		MongoURI:       os.Getenv("MONGO_URI"),
-		JWTSecret:      os.Getenv("JWT_SECRET"),
-		RedisURL:       os.Getenv("REDIS_URL"),
-		ServerPort:     os.Getenv("SERVER_PORT"),
-		AuthServiceURL: os.Getenv("AUTH_SERVICE_URL"),
+		MongoURI:         os.Getenv("MONGO_URI"),
+		JWTSecret:        os.Getenv("JWT_SECRET"),
+		RedisURL:         os.Getenv("REDIS_URL"),
+		ServerPort:       os.Getenv("SERVER_PORT"),
+		AuthServiceURL:   os.Getenv("AUTH_SERVICE_URL"),
+		NotifiServiceURL: os.Getenv("NOTIFI_SERVICE_URL"),
 	}, nil
 }

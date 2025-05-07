@@ -70,7 +70,7 @@ func main() {
 	jwtUtil := utils.NewJWTUtil(cfg.JWTSecret)
 	googleAuth := services.NewGoogleAuthService(cfg.GoogleClientID)
 
-	authService := services.NewAuthService(userRepo, jwtUtil, googleAuth, emailService, utils.WrapRedisClient(rdb))
+	authService := services.NewAuthService(userRepo, jwtUtil, googleAuth, emailService, utils.WrapRedisClient(rdb), cfg)
 
 	authHandler := handlers.NewAuthHandler(authService)
 

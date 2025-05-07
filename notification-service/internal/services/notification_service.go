@@ -3,6 +3,7 @@ package services
 import (
 	"cleaning-app/notification-service/internal/models"
 	"cleaning-app/notification-service/internal/repository"
+	"cleaning-app/notification-service/internal/utils/push"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,20 +19,29 @@ const (
 	OrderEventsChannel   = "order_events"
 	SupportEventsChannel = "support_events"
 	AdminEventsChannel   = "admin_events"
+	PaymentEventsChannel = "payment_events"
+	SubscriptionChannel  = "subscription_events"
+	ReviewEventsChannel  = "review_events"
 )
 
 // NotificationService обрабатывает все операции, связанные с уведомлениями
 type NotificationService struct {
 	repo  *repository.NotificationRepository
 	redis *redis.Client
+	FCM   *push.FCMClient
 }
 
 // NewNotificationService создает новый экземпляр сервиса уведомлений
-func NewNotificationService(repo *repository.NotificationRepository, rdb *redis.Client) *NotificationService {
+func NewNotificationService(repo *repository.NotificationRepository, rdb *redis.Client, fcm *push.FCMClient) *NotificationService {
 	return &NotificationService{
 		repo:  repo,
 		redis: rdb,
+		FCM:   fcm,
 	}
+}
+
+func (s *NotificationService) SendPush(req models.PushNotificationRequest) error {
+	return s.FCM.SendPushNotification(req.Token, req.Title, req.Message)
 }
 
 // EventPayload общая структура для событий из Redis
@@ -81,6 +91,20 @@ func (s *NotificationService) ProcessEvent(ctx context.Context, channel string, 
 		notifType = models.TypeAdminAlert
 		title = "Административное уведомление"
 		deliveryType = models.DeliveryPush
+	case PaymentEventsChannel:
+		notifType = models.TypeSystemMessage
+		title = formatPaymentTitle(event.EventType)
+		deliveryType = models.DeliveryEmail
+
+	case SubscriptionChannel:
+		notifType = models.TypeSystemMessage
+		title = formatSubscriptionTitle(event.EventType)
+		deliveryType = models.DeliveryEmail
+
+	case ReviewEventsChannel:
+		notifType = models.TypeSystemMessage
+		title = "Пожалуйста, оставьте отзыв"
+		deliveryType = models.DeliveryPush
 	default:
 		notifType = models.TypeSystemMessage
 		title = event.Title
@@ -102,6 +126,35 @@ func (s *NotificationService) ProcessEvent(ctx context.Context, channel string, 
 	}
 
 	return s.SendNotification(ctx, notification)
+}
+
+/* <<<<<<<<<<<<<<  ✨ Windsurf Command 🌟 >>>>>>>>>>>>>>>> */
+func formatPaymentTitle(eventType string) string {
+	switch eventType {
+	case "success":
+		return "Оплата прошла успешно"
+	case "failed":
+		return "Ошибка при оплате"
+	case "refunded":
+		return "Возврат средств"
+	default:
+		return "Уведомление о платеже"
+	}
+
+}
+
+func formatSubscriptionTitle(eventType string) string {
+	switch eventType {
+	case "started":
+		return "Подписка активирована"
+	case "expired":
+		return "Подписка истекла"
+	case "renewed":
+		return "Подписка обновлена"
+	default:
+		return "Уведомление о подписке"
+	}
+
 }
 
 // Вспомогательные функции для форматирования уведомлений

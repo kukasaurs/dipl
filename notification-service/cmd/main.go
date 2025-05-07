@@ -10,6 +10,7 @@ import (
 	"cleaning-app/notification-service/internal/repository"
 	"cleaning-app/notification-service/internal/services"
 	"cleaning-app/notification-service/internal/utils"
+	"cleaning-app/notification-service/internal/utils/push"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -55,10 +56,19 @@ func main() {
 		log.Println("[SHUTDOWN] Closing Redis connection...")
 		return rdb.Close()
 	})
+	// Подключение к Firebase Cloud Messaging (FCM)
+	fcm, err := push.NewFCMClient(cfg.FirebaseCredentials)
+	if err != nil {
+		log.Printf("Ошибка создания FCM клиента: %v", err)
+		// Continue execution without FCM functionality
+		fcm = nil
+	} else {
+		log.Println("FCM client successfully initialized")
+	}
 
 	// 5. Инициализация слоев
 	repo := repository.NewNotificationRepository(db)
-	notificationService := services.NewNotificationService(repo, rdb)
+	notificationService := services.NewNotificationService(repo, rdb, fcm)
 	notificationHandler := handler.NewNotificationHandler(notificationService)
 
 	// 6. Запуск подписки на Redis

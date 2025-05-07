@@ -59,7 +59,20 @@ func GenerateCode(length int) string {
 }
 
 func (j *JWTUtil) IsTokenBlacklisted(ctx context.Context, tokenString string, redis *RedisClient) bool {
-	var blacklisted bool
-	err := redis.Get(ctx, fmt.Sprintf("blacklist:%s", tokenString), &blacklisted)
-	return err == nil && blacklisted
+	token, err := j.ValidateToken(tokenString)
+	if err != nil || !token.Valid {
+		return true
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return true
+	}
+
+	jti, _ := claims["jti"].(string)
+	if jti == "" {
+		return true
+	}
+
+	return redis.Exists(ctx, fmt.Sprintf("blacklist:%s", jti))
 }

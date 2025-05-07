@@ -1,6 +1,7 @@
 package services
 
 import (
+	"cleaning-app/auth-service/internal/config"
 	"cleaning-app/auth-service/internal/models"
 	"cleaning-app/auth-service/internal/repository"
 	"cleaning-app/auth-service/internal/utils"
@@ -20,10 +21,11 @@ type AuthService struct {
 	google   *GoogleAuthService
 	email    EmailService
 	redis    *utils.RedisClient
+	cfg      *config.Config
 }
 
-func NewAuthService(userRepo *repositories.UserRepository, jwtUtil *utils.JWTUtil, google *GoogleAuthService, email EmailService, redis *utils.RedisClient) *AuthService {
-	return &AuthService{userRepo, jwtUtil, google, email, redis}
+func NewAuthService(userRepo *repositories.UserRepository, jwtUtil *utils.JWTUtil, google *GoogleAuthService, email EmailService, redis *utils.RedisClient, config *config.Config) *AuthService {
+	return &AuthService{userRepo, jwtUtil, google, email, redis, config}
 }
 
 func (s *AuthService) Register(user *models.User) (string, error) {
@@ -57,6 +59,14 @@ func (s *AuthService) Register(user *models.User) (string, error) {
 		_ = s.userRepo.DeleteUser(createdUser.ID)
 		return "", errors.New("failed to send email with temporary password")
 	}
+	_ = utils.SendNotification(context.Background(), s.cfg, utils.NotificationRequest{
+		UserID:       user.ID.Hex(),
+		Role:         user.Role,
+		Title:        "Добро пожаловать!",
+		Message:      "Благодарим за регистрацию. Приятного пользования нашим сервисом!",
+		Type:         "welcome",
+		DeliveryType: "push",
+	})
 
 	return s.jwtUtil.GenerateToken(createdUser.ID.Hex(), createdUser.Role, true)
 }
@@ -150,6 +160,14 @@ func (s *AuthService) ChangePassword(userID primitive.ObjectID, oldPassword, new
 	}
 
 	user.ResetRequired = false
+	_ = utils.SendNotification(context.Background(), s.cfg, utils.NotificationRequest{
+		UserID:       user.ID.Hex(),
+		Role:         user.Role,
+		Title:        "Пароль изменен",
+		Message:      "Ваш пароль успешно обновлен.",
+		Type:         "security",
+		DeliveryType: "push",
+	})
 
 	return s.userRepo.UpdateUser(user)
 }

@@ -27,6 +27,22 @@ func NewNotificationHandler(service *services.NotificationService) *Notification
 	return &NotificationHandler{service: service}
 }
 
+func (h *NotificationHandler) PushNotificationHandler(c *gin.Context) {
+	var req models.PushNotificationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	err := h.service.SendPush(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to send notification"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "sent"})
+}
+
 // GetNotifications возвращает список уведомлений пользователя
 func (h *NotificationHandler) GetNotifications(c *gin.Context) {
 	userID, exists := c.Get("userId")
