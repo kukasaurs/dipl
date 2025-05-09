@@ -12,8 +12,9 @@ type AuthClient struct {
 }
 
 type AuthResponse struct {
-	Valid bool   `json:"valid"`
-	Role  string `json:"role"`
+	Role          string `json:"role"`
+	UserID        string `json:"user_id"`
+	ResetRequired bool   `json:"reset_required"`
 }
 
 func NewAuthClient(baseURL string) *AuthClient {
@@ -66,18 +67,15 @@ func JWTWithAuth(client *AuthClient, requiredRole string) func(http.Handler) htt
 
 // VerifyToken verifies a token against the auth service
 func (c *AuthClient) VerifyToken(token string) (bool, string, error) {
-	url := fmt.Sprintf("%s/verify", c.baseURL)
+	url := fmt.Sprintf("%s/api/auth/validate", c.baseURL)
 
-	// Create request
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return false, "", err
 	}
 
-	// Add token to header
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	// Send request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -85,16 +83,15 @@ func (c *AuthClient) VerifyToken(token string) (bool, string, error) {
 	}
 	defer resp.Body.Close()
 
-	// Check response status
 	if resp.StatusCode != http.StatusOK {
 		return false, "", fmt.Errorf("auth service returned status: %d", resp.StatusCode)
 	}
 
-	// Parse response
 	var authResp AuthResponse
 	if err := json.NewDecoder(resp.Body).Decode(&authResp); err != nil {
 		return false, "", err
 	}
 
-	return authResp.Valid, authResp.Role, nil
+	// Допустим, если user_id есть — значит токен валиден
+	return authResp.UserID != "", authResp.Role, nil
 }

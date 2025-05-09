@@ -1,33 +1,26 @@
 package config
 
 import (
-	"github.com/caarlos0/env/v10"
+	"github.com/joho/godotenv"
 	_ "github.com/joho/godotenv/autoload"
-
-	"cleaning-app/cleaning-details-service/utils/mongodb"
+	"os"
 )
 
 // Config holds all application configuration
+// config/config.go
 type Config struct {
-	MongoDB     mongodb.Config
-	Server      ServerConfig
-	AuthService AuthServiceConfig
+	MongoURI       string
+	ServerPort     string
+	AuthServiceURL string
 }
 
-// ServerConfig holds server configuration
-type ServerConfig struct {
-	Port string `env:"SERVER_PORT" envDefault:"8083"`
-}
-
-// AuthServiceConfig holds auth service configuration
-type AuthServiceConfig struct {
-	URL string `env:"AUTH_SERVICE_URL" envDefault:"http://auth-service:8081"`
-}
-
-// NewConfig creates a new Config
-func NewConfig() (*Config, error) {
-	cfg := new(Config)
-	err := env.Parse(cfg)
-
-	return cfg, err
+func LoadConfig() (*Config, error) {
+	if err := godotenv.Load(); err != nil {
+		return nil, err
+	}
+	return &Config{
+		MongoURI:       os.Getenv("MONGO_URI"),
+		ServerPort:     os.Getenv("SERVER_PORT"),
+		AuthServiceURL: os.Getenv("AUTH_SERVICE_URL"),
+	}, nil
 }
