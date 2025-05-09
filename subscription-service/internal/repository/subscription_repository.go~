@@ -1,0 +1,260 @@
+package repository
+
+import (
+	"cleaning-app/subscription-service/internal/models"
+	"context"
+	"fmt"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+)
+
+type SubscriptionRepository struct {
+	collection *mongo.Collection
+	db         *mongo.Database
+}
+
+func NewSubscriptionRepository(db *mongo.Database) *SubscriptionRepository {
+	return &SubscriptionRepository{
+		collection: db.Collection("subscriptions"),
+		db:         db,
+	}
+}
+
+// DB returns the underlying database for use by other services
+func (r *SubscriptionRepository) DB() *mongo.Database {
+	return r.db
+}
+
+func (r *SubscriptionRepository) Create(ctx context.Context, sub *models.Subscription) error {
+	_, err := r.collection.InsertOne(ctx, sub)
+	if err != nil {
+		return fmt.Errorf("failed to insert subscription: %w", err)
+	}
+	return nil
+}
+
+func (r *SubscriptionRepository) Update(ctx context.Context, id primitive.ObjectID, update bson.M) error {
+	filter := bson.M{"_id": id}
+	updateDoc := bson.M{"$set": update}
+
+	result, err := r.collection.UpdateOne(ctx, filter, updateDoc)
+	if err != nil {
+		return fmt.Errorf("failed to update subscription: %w", err)
+	}
+
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("no subscription found with ID: %s", id.Hex())
+	}
+
+	return nil
+}
+
+func (r *SubscriptionRepository) Cancel(ctx context.Context, id primitive.ObjectID) error {
+	filter := bson.M{"_id": id}
+	update := bson.M{
+		"$set": bson.M{
+			"status":     models.StatusCancelled,
+			"updated_at": time.Now(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("failed to cancel subscription: %w", err)
+	}
+
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("no subscription found with ID: %s", id.Hex())
+	}
+
+	return nil
+}
+
+func (r *SubscriptionRepository) GetByID(ctx context.Context, id primitive.ObjectID) (models.Subscription, error) {
+	var subscription models.Subscription
+	filter := bson.M{"_id": id}
+
+	err := r.collection.FindOne(ctx, filter).Decode(&subscription)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return subscription, fmt.Errorf("subscription not found with ID: %s", id.Hex())
+		}
+		return subscription, fmt.Errorf("failed to get subscription: %w", err)
+	}
+
+	return subscription, nil
+}
+
+func (r *SubscriptionRepository) GetByClient(ctx context.Context, clientID string) ([]models.Subscription, error) {
+	var subscriptions []models.Subscription
+	filter := bson.M{"client_id": clientID}
+
+	cursor, err := r.collection.Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find subscriptions: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	if err := cursor.All(ctx, &subscriptions); err != nil {
+		return nil, fmt.Errorf("failed to decode subscriptions: %w", err)
+	}
+
+	return subscriptions, nil
+}
+
+func (r *SubscriptionRepository) GetAll(ctx context.Context) ([]models.Subscription, error) {
+	var subscriptions []models.Subscription
+
+	// Sort by creation date, newest first
+	opts := options.Find().SetSort(bson.M{"created_at": -1})
+
+	cursor, err := r.collection.Find(ctx, bson.M{}, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find subscriptions: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	if err := cursor.All(ctx, &subscriptions); err != nil {
+		return nil, fmt.Errorf("failed to decode subscriptions: %w", err)
+	}
+
+	return subscriptions, nil
+}
+
+func (r *SubscriptionRepository) FindExpiringOn(ctx context.Context, date time.Time) ([]models.Subscription, error) {
+	// Get active subscriptions ending on the specified date
+	start := date
+	end := date.Add(24 * time.Hour)
+
+	filter := bson.M{
+		"status":   models.StatusActive,
+		"end_date": bson.M{"$gte": start, "$lt": end},
+	}
+
+	var subscriptions []models.Subscription
+	cursor, err := r.collection.Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find expiring subscriptions: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	if err := cursor.All(ctx, &subscriptions); err != nil {
+		return nil, fmt.Errorf("failed to decode subscriptions: %w", err)
+	}
+
+	return subscriptions, nil
+}
+
+func (r *SubscriptionRepository) FindExpired(ctx context.Context, before time.Time) ([]models.Subscription, error) {
+	// Get active subscriptions that have expired before the specified date
+	filter := bson.M{
+		"status":   models.StatusActive,
+		"end_date": bson.M{"$lt": before},
+	}
+
+	var subscriptions []models.Subscription
+	cursor, err := r.collection.Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find expired subscriptions: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	if err := cursor.All(ctx, &subscriptions); err != nil {
+		return nil, fmt.Errorf("failed to decode subscriptions: %w", err)
+	}
+
+	return subscriptions, nil
+}
+
+func (r *SubscriptionRepository) UpdateMany(ctx context.Context, filter bson.M, update bson.M) (int64, error) {
+	updateDoc := bson.M{"$set": update}
+	result, err := r.collection.UpdateMany(ctx, filter, updateDoc)
+	if err != nil {
+		return 0, fmt.Errorf("failed to update subscriptions: %w", err)
+	}
+
+	return result.ModifiedCount, nil
+}
+
+func (r *SubscriptionRepository) Count(ctx context.Context, filter bson.M) (int64, error) {
+	count, err := r.collection.CountDocuments(ctx, filter)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count subscriptions: %w", err)
+	}
+
+	return count, nil
+}
+
+func (r *SubscriptionRepository) FindWithPagination(ctx context.Context, filter bson.M, page, pageSize int) ([]models.Subscription, error) {
+	var subscriptions []models.Subscription
+
+	// Calculate skip value for pagination
+	skip := (page - 1) * pageSize
+
+	opts := options.Find().
+		SetLimit(int64(pageSize)).
+		SetSkip(int64(skip)).
+		SetSort(bson.M{"created_at": -1})
+
+	cursor, err := r.collection.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find subscriptions: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	if err := cursor.All(ctx, &subscriptions); err != nil {
+		return nil, fmt.Errorf("failed to decode subscriptions: %w", err)
+	}
+
+	return subscriptions, nil
+}
+
+func (r *SubscriptionRepository) FindByServiceID(ctx context.Context, serviceID string) ([]models.Subscription, error) {
+	filter := bson.M{"service_ids": serviceID}
+
+	var subscriptions []models.Subscription
+	cursor, err := r.collection.Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find subscriptions by service ID: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	if err := cursor.All(ctx, &subscriptions); err != nil {
+		return nil, fmt.Errorf("failed to decode subscriptions: %w", err)
+	}
+
+	return subscriptions, nil
+}
+
+func (r *SubscriptionRepository) FindWithDateRange(ctx context.Context, startDate, endDate time.Time) ([]models.Subscription, error) {
+	filter := bson.M{
+		"$or": []bson.M{
+			// Subscriptions that start within date range
+			{"start_date": bson.M{"$gte": startDate, "$lte": endDate}},
+			// Subscriptions that end within date range
+			{"end_date": bson.M{"$gte": startDate, "$lte": endDate}},
+			// Subscriptions that span the entire date range
+			{
+				"start_date": bson.M{"$lte": startDate},
+				"end_date":   bson.M{"$gte": endDate},
+			},
+		},
+	}
+
+	var subscriptions []models.Subscription
+	cursor, err := r.collection.Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find subscriptions within date range: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	if err := cursor.All(ctx, &subscriptions); err != nil {
+		return nil, fmt.Errorf("failed to decode subscriptions: %w", err)
+	}
+
+	return subscriptions, nil
+}

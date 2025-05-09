@@ -21,7 +21,7 @@ func NewJWTUtil(secret string) *JWTUtil {
 }
 
 func (j *JWTUtil) GenerateToken(userID, role string, resetRequired bool) (string, error) {
-	expirationTime := time.Now().Add(200 * time.Hour)
+	expirationTime := time.Now().Add(72 * time.Hour)
 	claims := jwt.MapClaims{
 		"user_id":        userID,
 		"role":           role,
