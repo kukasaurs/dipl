@@ -7,31 +7,45 @@ import (
 	"cleaning-app/cleaning-details-service/internal/service"
 	"cleaning-app/cleaning-details-service/utils/auth"
 	"cleaning-app/cleaning-details-service/utils/middleware"
-	"cleaning-app/cleaning-details-service/utils/mongodb"
+	utils "cleaning-app/cleaning-details-service/utils/shutDownManager"
+	"context"
+
 	"github.com/gorilla/mux"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 	"net/http"
 )
 
 func main() {
+
+	baseCtx := context.Background()
+	ctx, shutdownManager := utils.NewShutdownManager(baseCtx)
+	shutdownManager.StartListening()
+
 	// Load configuration
-	cfg, err := config.NewConfig()
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("Error parsing configs: %v", err)
 	}
 
 	// Connect to MongoDB
-	client, err := mongodb.NewMongoDBConnection(cfg.MongoDB)
+	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoURI))
 	if err != nil {
-		log.Fatalf("Error connecting to MongoDB: %v", err)
+		log.Fatal("Failed to connect to MongoDB:", err)
 	}
-	defer client.Disconnect(nil)
+	db := mongoClient.Database("cleaning_service")
+
+	shutdownManager.Register(func(ctx context.Context) error {
+		log.Println("[SHUTDOWN] Closing MongoDB connection...")
+		return mongoClient.Disconnect(ctx)
+	})
 
 	// Initialize components
-	serviceRepo := repository.NewCleaningServiceRepository(client.Database(cfg.MongoDB.DBName))
+	serviceRepo := repository.NewCleaningServiceRepository(db)
 	serviceSrv := services.NewCleaningService(serviceRepo)
 	serviceHandler := handlers.NewCleaningServiceHandler(serviceSrv)
-	authClient := auth.NewAuthClient(cfg.AuthService.URL)
+	authClient := auth.NewAuthClient(cfg.AuthServiceURL)
 
 	// Setup router
 	router := mux.NewRouter()
@@ -43,7 +57,7 @@ func main() {
 
 	// Admin endpoints with authentication
 	adminRouter := router.PathPrefix("/api/admin/services").Subrouter()
-	adminRouter.Use(auth.JWTWithAuth(authClient, "ADMIN"))
+	adminRouter.Use(auth.JWTWithAuth(authClient, "admin"))
 
 	adminRouter.HandleFunc("", serviceHandler.GetAllServices).Methods(http.MethodGet)
 	adminRouter.HandleFunc("", serviceHandler.CreateService).Methods(http.MethodPost)
@@ -53,10 +67,10 @@ func main() {
 
 	// Start server
 	server := &http.Server{
-		Addr:    ":" + cfg.Server.Port,
+		Addr:    ":" + cfg.ServerPort,
 		Handler: router,
 	}
 
-	log.Printf("Server started on port %s", cfg.Server.Port)
+	log.Printf("Server started on port %s", cfg.ServerPort)
 	log.Fatal(server.ListenAndServe())
 }
