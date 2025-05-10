@@ -65,6 +65,7 @@ func main() {
 	// Public endpoints
 	publicRouter := router.PathPrefix("/api/services").Subrouter()
 	publicRouter.HandleFunc("/active", serviceHandler.GetActiveServices).Methods(http.MethodGet)
+	publicRouter.HandleFunc("/by-ids", serviceHandler.GetServicesByIDs).Methods(http.MethodPost)
 
 	// Admin endpoints with authentication
 	adminRouter := router.PathPrefix("/api/admin/services").Subrouter()

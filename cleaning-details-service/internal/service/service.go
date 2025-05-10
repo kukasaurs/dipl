@@ -16,6 +16,7 @@ type CleaningServiceRepository interface {
 	UpdateService(context.Context, *models.CleaningService) error
 	DeleteService(context.Context, primitive.ObjectID) error
 	UpdateServiceStatus(context.Context, primitive.ObjectID, bool) error
+	GetServicesByIDs(ctx context.Context, ids []primitive.ObjectID) ([]models.CleaningService, error)
 }
 
 type CleaningService struct {
@@ -111,4 +112,7 @@ func (s *CleaningService) UpdateServiceStatus(ctx context.Context, id string, is
 		_ = utils.DeleteFromCache(ctx, s.redisClient, "active_services")
 	}
 	return err
+}
+func (s *CleaningService) GetServicesByIDs(ctx context.Context, ids []primitive.ObjectID) ([]models.CleaningService, error) {
+	return s.repo.GetServicesByIDs(ctx, ids)
 }

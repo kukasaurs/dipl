@@ -129,7 +129,7 @@ func (r *CleaningServiceRepository) UpdateService(ctx context.Context, service *
 
 	result, err := collection.UpdateOne(ctx, filter, update)
 	if err != nil {
-		return r.HandleDatabaseError(err)
+		return r.handleDatabaseError(err)
 	}
 
 	if result.MatchedCount == 0 {
@@ -146,7 +146,7 @@ func (r *CleaningServiceRepository) DeleteService(ctx context.Context, id primit
 	filter := bson.M{"_id": id}
 	result, err := collection.DeleteOne(ctx, filter)
 	if err != nil {
-		return r.HandleDatabaseError(err)
+		return r.handleDatabaseError(err)
 	}
 
 	if result.DeletedCount == 0 {
@@ -168,7 +168,7 @@ func (r *CleaningServiceRepository) UpdateServiceStatus(ctx context.Context, id 
 
 	result, err := collection.UpdateOne(ctx, filter, update)
 	if err != nil {
-		return r.HandleDatabaseError(err)
+		return r.handleDatabaseError(err)
 	}
 
 	if result.MatchedCount == 0 {
@@ -178,7 +178,7 @@ func (r *CleaningServiceRepository) UpdateServiceStatus(ctx context.Context, id 
 	return nil
 }
 
-func (r *CleaningServiceRepository) HandleDatabaseError(err error) error {
+func (r *CleaningServiceRepository) handleDatabaseError(err error) error {
 	if errors.Is(err, mongo.ErrNoDocuments) {
 		return models.ErrNotFound
 	}
