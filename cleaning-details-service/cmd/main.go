@@ -5,9 +5,7 @@ import (
 	"cleaning-app/cleaning-details-service/internal/handler"
 	"cleaning-app/cleaning-details-service/internal/repository"
 	"cleaning-app/cleaning-details-service/internal/service"
-	"cleaning-app/cleaning-details-service/utils/auth"
-	"cleaning-app/cleaning-details-service/utils/middleware"
-	utils "cleaning-app/cleaning-details-service/utils/shutDownManager"
+	utils2 "cleaning-app/cleaning-details-service/utils"
 	"context"
 
 	"github.com/gorilla/mux"
@@ -20,7 +18,7 @@ import (
 func main() {
 
 	baseCtx := context.Background()
-	ctx, shutdownManager := utils.NewShutdownManager(baseCtx)
+	ctx, shutdownManager := utils2.NewShutdownManager(baseCtx)
 	shutdownManager.StartListening()
 
 	// Load configuration
@@ -45,11 +43,11 @@ func main() {
 	serviceRepo := repository.NewCleaningServiceRepository(db)
 	serviceSrv := services.NewCleaningService(serviceRepo)
 	serviceHandler := handlers.NewCleaningServiceHandler(serviceSrv)
-	authClient := auth.NewAuthClient(cfg.AuthServiceURL)
+	authClient := utils2.NewAuthClient(cfg.AuthServiceURL)
 
 	// Setup router
 	router := mux.NewRouter()
-	router.Use(middleware.LoggingMiddleware)
+	router.Use(utils2.LoggingMiddleware)
 
 	// Public endpoints
 	publicRouter := router.PathPrefix("/api/services").Subrouter()
@@ -57,7 +55,7 @@ func main() {
 
 	// Admin endpoints with authentication
 	adminRouter := router.PathPrefix("/api/admin/services").Subrouter()
-	adminRouter.Use(auth.JWTWithAuth(authClient, "admin"))
+	adminRouter.Use(utils2.JWTWithAuth(authClient, "admin"))
 
 	adminRouter.HandleFunc("", serviceHandler.GetAllServices).Methods(http.MethodGet)
 	adminRouter.HandleFunc("", serviceHandler.CreateService).Methods(http.MethodPost)

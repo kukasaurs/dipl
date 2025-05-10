@@ -13,26 +13,6 @@ type RedisClient struct {
 	client *redis.Client
 }
 
-// NewRedisClient creates a new Redis client from the provided URL
-func NewRedisClient(redisURL string) (*RedisClient, error) {
-	options, err := redis.ParseURL(redisURL)
-	if err != nil {
-		return nil, err
-	}
-
-	client := redis.NewClient(options)
-
-	// Test the connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := client.Ping(ctx).Err(); err != nil {
-		return nil, err
-	}
-
-	return &RedisClient{client: client}, nil
-}
-
 // Set stores a value in Redis with the given key and expiration
 func (c *RedisClient) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
 	data, err := json.Marshal(value)
