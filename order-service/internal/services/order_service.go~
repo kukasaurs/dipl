@@ -44,7 +44,7 @@ func (s *orderService) CreateOrder(ctx context.Context, order *models.Order) err
 	if err := order.Validate(); err != nil {
 		return err
 	}
-	services, err := utils.FetchServiceDetails(ctx, s.cfg.CleaningDetailsURL, order.ServiceIDs)
+	services, err := utils.FetchServiceDetails(ctx, "http://cleaning-details-service:8003", order.ServiceIDs)
 	if err != nil {
 		return fmt.Errorf("failed to fetch services: %w", err)
 	}

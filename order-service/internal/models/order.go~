@@ -38,6 +38,7 @@ type Service struct {
 	Price float64 `json:"price"`
 }
 
+
 func (o *Order) Validate() error {
 	if o.ClientID == "" || o.Address == "" || o.ServiceType == "" || o.Date.IsZero() {
 		return errors.New("missing required order fields")

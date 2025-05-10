@@ -47,8 +47,6 @@ services:
     depends_on:
       - mongodb
       - auth-service
-<<<<<<< HEAD
-
   subscription-service:
     build: ./subscription-service
     ports:
@@ -65,23 +63,3 @@ services:
 volumes:
   mongodb_data:
   redis_data:
-#  cleaning-details-service:
-#    build: ./cleaning-details-service
-=======
-#  notification-service:
-#    build: ./notification-service
->>>>>>> ab0f246e9efcab4a63687f0256708a534dedcea0
-#    ports:
-#      - "8002:8002"
-#    environment:
-#      - JWT_SECRET=jani-secret
-#      - AUTH_SERVICE_URL=http://auth-service:8000
-#    env_file:
-#      - .env
-#    depends_on:
-#      - mongodb
-#      - auth-service
-volumes:
-  mongodb_data:
-  redis_data:
-

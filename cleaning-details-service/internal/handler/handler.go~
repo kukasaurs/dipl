@@ -18,7 +18,6 @@ type CleaningServiceService interface {
 	UpdateService(context.Context, *models.CleaningService) error
 	DeleteService(context.Context, string) error
 	UpdateServiceStatus(context.Context, string, bool) error
-	GetServicesByIDs(context.Context, []primitive.ObjectID) ([]models.CleaningService, error)
 }
 
 type CleaningServiceHandler struct {
