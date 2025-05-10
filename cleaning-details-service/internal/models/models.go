@@ -1,11 +1,10 @@
 package models
 
 import (
+	"cleaning-app/cleaning-details-service/utils"
 	"fmt"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"strings"
-
-	"cleaning-app/cleaning-details-service/utils/validator"
 )
 
 // CleaningService represents a cleaning service
@@ -20,10 +19,10 @@ type CleaningService struct {
 
 // Validate validates the CleaningService
 func (cs CleaningService) Validate() error {
-	validate := validator.GetValidator()
+	validate := utils.GetValidator()
 	err := validate.Struct(cs)
 	if err != nil {
-		errs := validator.ParseErrors(err)
+		errs := utils.ParseErrors(err)
 		return fmt.Errorf("%w: %s", ErrValidation, strings.Join(errs, " // "))
 	}
 
