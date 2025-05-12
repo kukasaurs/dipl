@@ -5,9 +5,8 @@ import (
 	"cleaning-app/cleaning-details-service/internal/handler"
 	"cleaning-app/cleaning-details-service/internal/repository"
 	"cleaning-app/cleaning-details-service/internal/service"
-	utils2 "cleaning-app/cleaning-details-service/utils"
+	"cleaning-app/cleaning-details-service/utils"
 	"context"
-
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -18,7 +17,7 @@ import (
 func main() {
 
 	baseCtx := context.Background()
-	ctx, shutdownManager := utils2.NewShutdownManager(baseCtx)
+	ctx, shutdownManager := utils.NewShutdownManager(baseCtx)
 	shutdownManager.StartListening()
 
 	// Load configuration
@@ -26,6 +25,20 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error parsing configs: %v", err)
 	}
+
+	// Redis
+	redisClient := utils.NewRedisClient(cfg.RedisURL)
+
+	if err := redisClient.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	} else {
+		log.Println("Connected to Redis successfully")
+	}
+
+	shutdownManager.Register(func(ctx context.Context) error {
+		log.Println("[SHUTDOWN] Closing Redis connection...")
+		return utils.CloseRedis(ctx, redisClient)
+	})
 
 	// Connect to MongoDB
 	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoURI))
@@ -41,13 +54,13 @@ func main() {
 
 	// Initialize components
 	serviceRepo := repository.NewCleaningServiceRepository(db)
-	serviceSrv := services.NewCleaningService(serviceRepo)
+	serviceSrv := services.NewCleaningService(serviceRepo, redisClient)
 	serviceHandler := handlers.NewCleaningServiceHandler(serviceSrv)
-	authClient := utils2.NewAuthClient(cfg.AuthServiceURL)
+	authClient := utils.NewAuthClient(cfg.AuthServiceURL)
 
 	// Setup router
 	router := mux.NewRouter()
-	router.Use(utils2.LoggingMiddleware)
+	router.Use(utils.LoggingMiddleware)
 
 	// Public endpoints
 	publicRouter := router.PathPrefix("/api/services").Subrouter()
@@ -56,7 +69,7 @@ func main() {
 
 	// Admin endpoints with authentication
 	adminRouter := router.PathPrefix("/api/admin/services").Subrouter()
-	adminRouter.Use(utils2.JWTWithAuth(authClient, "admin"))
+	adminRouter.Use(utils.JWTWithAuth(authClient, "admin"))
 
 	adminRouter.HandleFunc("", serviceHandler.GetAllServices).Methods(http.MethodGet)
 	adminRouter.HandleFunc("", serviceHandler.CreateService).Methods(http.MethodPost)
