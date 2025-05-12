@@ -44,7 +44,7 @@ func (s *orderService) CreateOrder(ctx context.Context, order *models.Order) err
 	if err := order.Validate(); err != nil {
 		return err
 	}
-	services, err := utils.FetchServiceDetails(ctx, "http://cleaning-details-service:8003", order.ServiceIDs)
+	services, err := utils.FetchServiceDetails(ctx, s.cfg.CleaningDetailsURL, order.ServiceIDs)
 	if err != nil {
 		return fmt.Errorf("failed to fetch services: %w", err)
 	}
@@ -79,6 +79,10 @@ func (s *orderService) UpdateOrder(ctx context.Context, id primitive.ObjectID, u
 	existing.ServiceType = updated.ServiceType
 	existing.Date = updated.Date
 	existing.Comment = updated.Comment
+	existing.ServiceIDs = updated.ServiceIDs
+
+	// 🔄 Получаем актуальные данные об услугах
+	s.enrichWithServiceDetails(ctx, existing)
 
 	if err := s.repo.Update(ctx, existing); err != nil {
 		return err
@@ -86,11 +90,8 @@ func (s *orderService) UpdateOrder(ctx context.Context, id primitive.ObjectID, u
 
 	cacheKey := fmt.Sprintf("orders_by_client:%s", existing.ClientID)
 	_ = s.redis.Del(ctx, cacheKey).Err()
-	if err := s.redis.Del(ctx, cacheKey).Err(); err != nil {
-		log.Printf("Failed to invalidate cache: %v", err)
-	}
 
-	// Уведомление об изменении заказа
+	// Уведомления (без изменений)
 	utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
 		UserID:       existing.ClientID,
 		Role:         "user",
@@ -99,7 +100,6 @@ func (s *orderService) UpdateOrder(ctx context.Context, id primitive.ObjectID, u
 		Type:         "order_updated",
 		DeliveryType: "push",
 	})
-
 	if existing.CleanerID != nil {
 		utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
 			UserID:       *existing.CleanerID,
@@ -240,7 +240,12 @@ func (s *orderService) ConfirmCompletion(ctx context.Context, id primitive.Objec
 }
 
 func (s *orderService) GetOrderByID(ctx context.Context, id primitive.ObjectID) (*models.Order, error) {
-	return s.repo.GetByID(ctx, id)
+	order, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	s.enrichWithServiceDetails(ctx, order)
+	return order, nil
 }
 
 func (s *orderService) GetAllOrders(ctx context.Context) ([]models.Order, error) {
@@ -250,6 +255,9 @@ func (s *orderService) GetAllOrders(ctx context.Context) ([]models.Order, error)
 	val, err := s.redis.Get(ctx, cacheKey).Result()
 	if err == nil {
 		if jsonErr := json.Unmarshal([]byte(val), &cached); jsonErr == nil {
+			for i := range cached {
+				s.enrichWithServiceDetails(ctx, &cached[i])
+			}
 			return cached, nil
 		}
 	}
@@ -257,6 +265,9 @@ func (s *orderService) GetAllOrders(ctx context.Context) ([]models.Order, error)
 	orders, err := s.repo.GetAll(ctx)
 	if err != nil {
 		return nil, err
+	}
+	for i := range orders {
+		s.enrichWithServiceDetails(ctx, &orders[i])
 	}
 
 	data, _ := json.Marshal(orders)
@@ -268,23 +279,25 @@ func (s *orderService) GetAllOrders(ctx context.Context) ([]models.Order, error)
 func (s *orderService) GetOrdersByClient(ctx context.Context, clientID string) ([]models.Order, error) {
 	cacheKey := fmt.Sprintf("orders_by_client:%s", clientID)
 
-	// Пробуем получить из кэша
 	var cached []models.Order
 	val, err := s.redis.Get(ctx, cacheKey).Result()
 	if err == nil {
-		// Успешно найдено в кэше
 		if jsonErr := json.Unmarshal([]byte(val), &cached); jsonErr == nil {
+			for i := range cached {
+				s.enrichWithServiceDetails(ctx, &cached[i])
+			}
 			return cached, nil
 		}
 	}
 
-	// Если в кэше нет, грузим из Mongo
 	orders, err := s.repo.GetByClientID(ctx, clientID)
 	if err != nil {
 		return nil, err
 	}
+	for i := range orders {
+		s.enrichWithServiceDetails(ctx, &orders[i])
+	}
 
-	// Кладём в кэш на 5 минут
 	data, _ := json.Marshal(orders)
 	_ = s.redis.Set(ctx, cacheKey, data, 5*time.Minute).Err()
 
@@ -376,4 +389,13 @@ func (s *orderService) SendOrderNotification(ctx context.Context, order models.O
 		}
 	}
 	return nil
+}
+func (s *orderService) enrichWithServiceDetails(ctx context.Context, order *models.Order) {
+	if len(order.ServiceIDs) == 0 {
+		return
+	}
+	services, err := utils.FetchServiceDetails(ctx, s.cfg.CleaningDetailsURL, order.ServiceIDs)
+	if err == nil {
+		order.ServiceDetails = services
+	}
 }

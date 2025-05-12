@@ -27,6 +27,6 @@ func LoadConfig() (*Config, error) {
 		ServerPort:         os.Getenv("SERVER_PORT"),
 		AuthServiceURL:     os.Getenv("AUTH_SERVICE_URL"),
 		NotifiServiceURL:   os.Getenv("NOTIFI_SERVICE_URL"),
-		CleaningDetailsURL: os.Getenv("CLEANING_DETAILS_URL"),
+		CleaningDetailsURL: os.Getenv("CLEANING_DETAILS_SERVICE_URL"),
 	}, nil
 }
