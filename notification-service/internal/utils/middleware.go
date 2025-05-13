@@ -13,6 +13,7 @@ type AuthData struct {
 	UserID        string `json:"user_id"`
 	Role          string `json:"role"`
 	ResetRequired bool   `json:"reset_required"`
+	Banned        bool   `json:"banned"`
 }
 
 func AuthMiddleware(authURL string) gin.HandlerFunc {
@@ -52,6 +53,13 @@ func AuthMiddleware(authURL string) gin.HandlerFunc {
 		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 			log.Printf("[AUTH] Failed to decode auth response: %v", err)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Invalid response from auth service"})
+			return
+		}
+
+		// Проверяем banned
+		if data.Banned {
+			log.Printf("[AUTH] Access denied for banned user: %s", data.UserID)
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Account is banned"})
 			return
 		}
 

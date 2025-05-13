@@ -42,6 +42,8 @@ func (s *AuthService) Register(user *models.User) (string, error) {
 	}
 
 	newUser := &models.User{
+		FirstName:     user.FirstName,
+		LastName:      user.LastName,
 		Email:         user.Email,
 		Password:      string(hashed),
 		Role:          "user",
@@ -63,7 +65,8 @@ func (s *AuthService) Register(user *models.User) (string, error) {
 		UserID:       user.ID.Hex(),
 		Role:         user.Role,
 		Title:        "Добро пожаловать!",
-		Message:      "Благодарим за регистрацию. Приятного пользования нашим сервисом!",
+		Message:      "Благодарим за регистрацию. Приятного пользования нашим сервисом! ",
+
 		Type:         "welcome",
 		DeliveryType: "push",
 	})
@@ -242,5 +245,3 @@ func (s *AuthService) Logout(tokenString string) error {
 
 	return s.redis.Set(ctx, fmt.Sprintf("blacklist:%s", jti), true, ttl)
 }
-
-

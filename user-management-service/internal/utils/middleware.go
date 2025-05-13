@@ -13,6 +13,7 @@ type AuthData struct {
 	UserID        string `json:"user_id"`
 	Role          string `json:"role"`
 	ResetRequired bool   `json:"reset_required"`
+	Banned        bool   `json:"banned"`
 }
 
 func AuthMiddleware(authURL string) gin.HandlerFunc {
@@ -55,6 +56,13 @@ func AuthMiddleware(authURL string) gin.HandlerFunc {
 			return
 		}
 
+		// Проверяем banned
+		if data.Banned {
+			log.Printf("[AUTH] Access denied for banned user: %s", data.UserID)
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Account is banned"})
+			return
+		}
+
 		// Проверяем reset_required
 		if data.ResetRequired {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Password reset required"})
@@ -62,10 +70,21 @@ func AuthMiddleware(authURL string) gin.HandlerFunc {
 		}
 
 		log.Printf("[AUTH] Authenticated user: %s with role: %s", data.UserID, data.Role)
-
-		// Use CONSISTENT keys for storage and retrieval - use 'user_id' instead of 'userId'
-		c.Set("user_id", data.UserID)
+		c.Set("userId", data.UserID)
 		c.Set("role", data.Role)
 		c.Next()
+	}
+}
+
+func RequireRoles(roles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role := c.GetString("role")
+		for _, allowed := range roles {
+			if role == allowed {
+				c.Next()
+				return
+			}
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 	}
 }

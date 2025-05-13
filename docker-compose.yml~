@@ -72,7 +72,7 @@ services:
       - mongodb
       - auth-service
   user-management-service:
-    build: ./user-management-service
+    build: ./user-management-service-service
     ports:
       - "8006:8006"
     environment:

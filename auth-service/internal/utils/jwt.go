@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt/v4"
-	//"github.com/redis/go-redis/v9"
 )
 
 type JWTUtil struct {
@@ -20,11 +19,12 @@ func NewJWTUtil(secret string) *JWTUtil {
 	return &JWTUtil{secret: secret}
 }
 
-func (j *JWTUtil) GenerateToken(userID, role string, resetRequired bool) (string, error) {
+func (j *JWTUtil) GenerateToken(userID, role string, banned bool, resetRequired bool) (string, error) {
 	expirationTime := time.Now().Add(200 * time.Hour)
 	claims := jwt.MapClaims{
 		"user_id":        userID,
 		"role":           role,
+		"banned":         banned,
 		"reset_required": resetRequired,
 		"exp":            expirationTime.Unix(),
 		"iat":            time.Now().Unix(),

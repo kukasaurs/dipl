@@ -211,7 +211,6 @@ func (h *AuthHandler) SetInitialPassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Password set successfully"})
 }
 
-// Logout will invalidate the current token
 func (h *AuthHandler) Logout(c *gin.Context) {
 	tokenStr := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
 	if tokenStr == "" {

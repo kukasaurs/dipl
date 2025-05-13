@@ -35,6 +35,7 @@ func AuthMiddleware(jwtUtil *JWTUtil, redis *RedisClient) gin.HandlerFunc {
 			return
 		}
 
+
 		c.Set("user_id", claims["user_id"])
 		c.Set("role", claims["role"])
 		c.Set("banned", claims["banned"])

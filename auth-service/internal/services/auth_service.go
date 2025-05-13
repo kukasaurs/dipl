@@ -42,6 +42,8 @@ func (s *AuthService) Register(user *models.User) (string, error) {
 	}
 
 	newUser := &models.User{
+		FirstName:     user.FirstName,
+		LastName:      user.LastName,
 		Email:         user.Email,
 		Password:      string(hashed),
 		Role:          "user",
@@ -60,10 +62,11 @@ func (s *AuthService) Register(user *models.User) (string, error) {
 		return "", errors.New("failed to send email with temporary password")
 	}
 	_ = utils.SendNotification(context.Background(), s.cfg, utils.NotificationRequest{
-		UserID:       user.ID.Hex(),
-		Role:         user.Role,
-		Title:        "Добро пожаловать!",
-		Message:      "Благодарим за регистрацию. Приятного пользования нашим сервисом!",
+		UserID:  user.ID.Hex(),
+		Role:    user.Role,
+		Title:   "Добро пожаловать!",
+		Message: "Благодарим за регистрацию. Приятного пользования нашим сервисом! ",
+
 		Type:         "welcome",
 		DeliveryType: "push",
 	})
