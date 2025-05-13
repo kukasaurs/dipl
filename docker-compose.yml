@@ -22,7 +22,7 @@ services:
       - JWT_SECRET=jani-secret
       - GOOGLE_CLIENT_ID=23103692607-q7mn7md6ru5fk8bv6nq3fdnh3fsvohov.apps.googleusercontent.com
     env_file:
-      - .env
+      - .env.docker
   order-service:
     build: ./order-service
     ports:
@@ -31,7 +31,7 @@ services:
       - JWT_SECRET=jani-secret
       - AUTH_SERVICE_URL=http://auth-service:8000
     env_file:
-      - .env
+      - .env.docker
     depends_on:
       - mongodb
       - auth-service
@@ -43,7 +43,7 @@ services:
       - JWT_SECRET=jani-secret
       - AUTH_SERVICE_URL=http://auth-service:8000
     env_file:
-      - .env
+      - .env.docker
     depends_on:
       - mongodb
       - auth-service
@@ -55,7 +55,7 @@ services:
       - JWT_SECRET=jani-secret
       - AUTH_SERVICE_URL=http://auth-service:8000
     env_file:
-      - .env
+      - .env.docker
     depends_on:
       - mongodb
       - auth-service
@@ -67,7 +67,7 @@ services:
       - JWT_SECRET=jani-secret
       - AUTH_SERVICE_URL=http://auth-service:8000
     env_file:
-      - .env
+      - .env.docker
     depends_on:
       - mongodb
       - auth-service
