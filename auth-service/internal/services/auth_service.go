@@ -71,7 +71,7 @@ func (s *AuthService) Register(user *models.User) (string, error) {
 		DeliveryType: "push",
 	})
 
-	return s.jwtUtil.GenerateToken(createdUser.ID.Hex(), createdUser.Role, true)
+	return s.jwtUtil.GenerateToken(createdUser.ID.Hex(), createdUser.Role, false, createdUser.ResetRequired)
 }
 
 func (s *AuthService) Login(email, password string) (string, error) {
@@ -92,7 +92,7 @@ func (s *AuthService) Login(email, password string) (string, error) {
 		return "", errors.New("invalid credentials")
 	}
 
-	return s.jwtUtil.GenerateToken(user.ID.Hex(), user.Role, user.ResetRequired)
+	return s.jwtUtil.GenerateToken(user.ID.Hex(), user.Role, false, user.ResetRequired)
 }
 
 func (s *AuthService) GetProfile(userID primitive.ObjectID) (*models.User, error) {
