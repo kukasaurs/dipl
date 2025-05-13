@@ -17,6 +17,7 @@ type Config struct {
 	NotifiServiceURL string
 }
 
+
 func LoadConfig() (*Config, error) {
 	if err := godotenv.Load(); err != nil {
 		return nil, err

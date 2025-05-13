@@ -34,6 +34,7 @@ func (j *JWTUtil) GenerateToken(userID, role string, banned bool, resetRequired 
 	return token.SignedString([]byte(j.secret))
 }
 
+
 func (j *JWTUtil) ValidateToken(tokenString string) (*jwt.Token, error) {
 	return jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {

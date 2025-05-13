@@ -38,6 +38,7 @@ func main() {
 	})
 
 	// 3. Инициализация слоёв: репозиторий → сервис → обработчик
+
 	userRepo := repository.NewUserRepository(db)
 	userService := services.NewUserService(userRepo)
 	userHandler := handler.NewUserHandler(userService)
