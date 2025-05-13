@@ -28,6 +28,7 @@ type OrderService interface {
 	GetAllOrders(ctx context.Context) ([]models.Order, error)
 	GetOrdersByClient(ctx context.Context, clientID string) ([]models.Order, error)
 	FilterOrders(ctx context.Context, filter map[string]interface{}) ([]models.Order, error)
+	HandlePaymentStatus(ctx context.Context, orderID string, status string) error
 }
 
 type orderService struct {
@@ -400,4 +401,32 @@ func (s *orderService) enrichWithServiceDetails(ctx context.Context, order *mode
 	if err == nil {
 		order.ServiceDetails = services
 	}
+}
+
+func (s *orderService) HandlePaymentStatus(ctx context.Context, orderID string, status string) error {
+	objID, err := primitive.ObjectIDFromHex(orderID)
+	if err != nil {
+		return fmt.Errorf("invalid order ID: %w", err)
+	}
+
+	order, err := s.repo.GetByID(ctx, objID)
+	if err != nil {
+		return fmt.Errorf("order not found: %w", err)
+	}
+
+	switch status {
+	case "success":
+		if order.Status == models.StatusPaid {
+			// уже оплачен — ничего не делаем
+			return nil
+		}
+		order.Status = models.StatusPaid
+	case "failed":
+		order.Status = models.StatusFailed
+	default:
+		return fmt.Errorf("unknown payment status: %s", status)
+	}
+
+	order.UpdatedAt = time.Now()
+	return s.repo.Update(ctx, order)
 }

@@ -152,3 +152,22 @@ func (h *OrderHandler) FilterOrders(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, orders)
 }
+func (h *OrderHandler) HandlePaymentNotification(c *gin.Context) {
+	var body struct {
+		OrderID string `json:"order_id"`
+		Status  string `json:"status"` // "success" или "failed"
+	}
+
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	err := h.service.HandlePaymentStatus(c.Request.Context(), body.OrderID, body.Status)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Payment status updated"})
+}

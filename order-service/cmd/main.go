@@ -64,8 +64,10 @@ func main() {
 	cacheRefresher := services.NewCacheRefresher(orderService, rdb)
 	cacheRefresher.Start(ctx)
 
-	// 6. Настройка роутера
 	router := gin.Default()
+
+	router.POST("/api/internal/payments/notify", orderHandler.HandlePaymentNotification)
+
 	router.Use(utils.AuthMiddleware(cfg.AuthServiceURL))
 
 	orders := router.Group("/api/orders")

@@ -13,7 +13,8 @@ const (
 	StatusPending   OrderStatus = "pending"
 	StatusAssigned  OrderStatus = "assigned"
 	StatusCompleted OrderStatus = "completed"
-	StatusCanceled  OrderStatus = "canceled"
+	StatusPaid      OrderStatus = "paid"
+	StatusFailed    OrderStatus = "payment_failed"
 )
 
 type Order struct {
