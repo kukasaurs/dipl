@@ -7,6 +7,7 @@ import (
 	"cleaning-app/auth-service/internal/services"
 	"cleaning-app/auth-service/internal/utils"
 	"context"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -14,6 +15,7 @@ import (
 	"log"
 	"net/http"
 	_ "os"
+	"time"
 	_ "time"
 )
 
@@ -96,6 +98,14 @@ func main() {
 			protected.PUT("/set-initial-password", authHandler.SetInitialPassword)
 		}
 	}
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"}, //поменять на наш домеин
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 
 	server := &http.Server{
 		Addr:    "0.0.0.0:8000",
