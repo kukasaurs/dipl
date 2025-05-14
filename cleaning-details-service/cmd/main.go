@@ -1,17 +1,19 @@
 package main
 
 import (
+	"context"
+	"log"
+	"net/http"
+
+	"github.com/gorilla/mux"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+
 	"cleaning-app/cleaning-details-service/config"
 	"cleaning-app/cleaning-details-service/internal/handler"
 	"cleaning-app/cleaning-details-service/internal/repository"
 	"cleaning-app/cleaning-details-service/internal/service"
 	"cleaning-app/cleaning-details-service/utils"
-	"context"
-	"github.com/gorilla/mux"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"log"
-	"net/http"
 )
 
 func main() {
