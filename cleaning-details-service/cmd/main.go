@@ -16,7 +16,7 @@ import (
 	"cleaning-app/cleaning-details-service/utils"
 )
 
-func main() { //comment for zhan
+func main() { //comment for nurda
 
 	baseCtx := context.Background()
 	ctx, shutdownManager := utils.NewShutdownManager(baseCtx)
