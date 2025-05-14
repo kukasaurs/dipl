@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"cleaning-app/cleaning-details-service/internal/models"
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+
+	"cleaning-app/cleaning-details-service/internal/models"
 )
 
 type CleaningServiceService interface {
