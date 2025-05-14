@@ -1,14 +1,16 @@
 package handlers
 
 import (
-	"cleaning-app/cleaning-details-service/internal/models"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"net/http"
+
+	"cleaning-app/cleaning-details-service/internal/models"
 )
 
 type CleaningServiceService interface {
