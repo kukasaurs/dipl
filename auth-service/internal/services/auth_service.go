@@ -201,10 +201,15 @@ func (s *AuthService) ResendTemporaryPassword(email string) error {
 	return s.email.SendVerificationCode(email, tempPass)
 }
 
-func (s *AuthService) SetInitialPassword(userID primitive.ObjectID, newPassword string) error {
+func (s *AuthService) SetInitialPassword(userID primitive.ObjectID, tempPassword, newPassword string) error {
+
 	user, err := s.userRepo.GetUserByID(userID)
 	if err != nil {
 		return errors.New("user not found")
+	}
+
+	if err := user.ComparePassword(tempPassword); err != nil {
+		return errors.New("invalid temporary password")
 	}
 
 	if !user.ResetRequired {

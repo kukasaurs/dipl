@@ -22,7 +22,9 @@ func NewAuthHandler(authService *services.AuthService) *AuthHandler {
 
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req struct {
-		Email string `json:"email" binding:"required,email"`
+		FirstName string `json:"first_name" binding:"required"`
+		LastName  string `json:"last_name" binding:"required"`
+		Email     string `json:"email" binding:"required,email"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid email"})
@@ -195,7 +197,8 @@ func (h *AuthHandler) SetInitialPassword(c *gin.Context) {
 	userID, _ := primitive.ObjectIDFromHex(userIDStr.(string))
 
 	var req struct {
-		NewPassword string `json:"new_password" validate:"required,min=6"`
+		TemporaryPassword string `json:"temporary_password" binding:"required"`
+		NewPassword       string `json:"new_password" binding:"required,min=6"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -203,7 +206,7 @@ func (h *AuthHandler) SetInitialPassword(c *gin.Context) {
 		return
 	}
 
-	if err := h.authService.SetInitialPassword(userID, req.NewPassword); err != nil {
+	if err := h.authService.SetInitialPassword(userID, req.TemporaryPassword, req.NewPassword); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
