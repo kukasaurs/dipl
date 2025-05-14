@@ -43,5 +43,5 @@ func (s *AuthService) GoogleLogin(idToken string) (string, error) {
 			return "", err
 		}
 	}
-	return s.jwtUtil.GenerateToken(user.ID.Hex(), user.Role, user.ResetRequired)
+	return s.jwtUtil.GenerateToken(user.ID.Hex(), user.Role, false, user.ResetRequired)
 }
