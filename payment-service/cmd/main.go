@@ -11,5 +11,5 @@ func main() {
 	http.HandleFunc("/api/payments", h.Pay)
 
 	log.Println("Mock Payment Service listening on :8005")
-	log.Fatal(http.ListenAndServe(":8005", nil))
+	log.Fatal(http.ListenAndServe("0.0.0.0:8005", nil))
 }

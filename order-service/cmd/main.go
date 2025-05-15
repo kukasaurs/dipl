@@ -93,7 +93,7 @@ func main() {
 
 	// 7. Запуск сервера
 	server := &http.Server{
-		Addr:    ":8001",
+		Addr:    cfg.ServerPort,
 		Handler: router,
 	}
 
