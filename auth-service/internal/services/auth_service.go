@@ -250,3 +250,7 @@ func (s *AuthService) Logout(tokenString string) error {
 
 	return s.redis.Set(ctx, fmt.Sprintf("blacklist:%s", jti), true, ttl)
 }
+
+func (s *AuthService) GetByRole(role string) ([]*models.User, error) {
+	return s.userRepo.GetByRole(role)
+}

@@ -228,3 +228,11 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Successfully logged out"})
 }
+func (h *AuthHandler) GetManagers(c *gin.Context) {
+	managers, err := h.authService.GetByRole("manager")
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to get managers"})
+		return
+	}
+	c.JSON(200, managers)
+}

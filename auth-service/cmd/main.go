@@ -87,6 +87,7 @@ func main() {
 		auth.POST("/resend-password", authHandler.ResendPassword)
 
 		auth.GET("/validate", authHandler.Validate)
+		auth.GET("/managers", authHandler.GetManagers)
 		auth.POST("/logout", authHandler.Logout)
 
 		protected := auth.Group("/")

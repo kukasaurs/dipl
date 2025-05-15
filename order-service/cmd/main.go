@@ -64,6 +64,9 @@ func main() {
 	cacheRefresher := services.NewCacheRefresher(orderService, rdb)
 	cacheRefresher.Start(ctx)
 
+	cron := services.NewCronJobService(orderRepo, cfg)
+	cron.Start(ctx)
+
 	// 6. Настройка роутера
 	router := gin.Default()
 	router.Use(utils.AuthMiddleware(cfg.AuthServiceURL))
