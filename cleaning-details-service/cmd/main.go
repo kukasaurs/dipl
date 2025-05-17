@@ -7,11 +7,14 @@ import (
 	"cleaning-app/cleaning-details-service/internal/service"
 	"cleaning-app/cleaning-details-service/utils"
 	"context"
+	"github.com/rs/cors"
+
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 	"net/http"
+	"time"
 )
 
 func main() { //comment for nurda
@@ -61,6 +64,15 @@ func main() { //comment for nurda
 	// Setup router
 	router := mux.NewRouter()
 	router.Use(utils.LoggingMiddleware)
+
+	router.Use(cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:3000", "http://host.docker.internal:8003"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposedHeaders:   []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           int((12 * time.Hour).Seconds()),
+	}).Handler)
 
 	// Public endpoints
 	publicRouter := router.PathPrefix("/api/services").Subrouter()

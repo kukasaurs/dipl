@@ -7,8 +7,10 @@ import (
 	"cleaning-app/subscription-service/internal/services"
 	"cleaning-app/subscription-service/internal/utils"
 	"context"
+	"github.com/gin-contrib/cors"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -56,6 +58,14 @@ func main() {
 
 	// Инициализация маршрутизатора
 	router := gin.Default()
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000", "http://host.docker.internal:8004"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 
 	// Apply auth middleware to the router
 	authMiddleware := utils.AuthMiddleware(cfg.AuthServiceURL)

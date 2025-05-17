@@ -7,11 +7,13 @@ import (
 	"cleaning-app/user-management-service/internal/services"
 	"cleaning-app/user-management-service/internal/utils"
 	"context"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 	"net/http"
+	"time"
 )
 
 func main() {
@@ -45,6 +47,14 @@ func main() {
 
 	// 4. Настройка Gin и middleware
 	router := gin.Default()
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000", "http://host.docker.internal:8006"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 	authMW := utils.AuthMiddleware(cfg.AuthServiceURL)
 
 	api := router.Group("/api/users")
