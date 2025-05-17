@@ -76,42 +76,17 @@ func AuthMiddleware(authURL string) gin.HandlerFunc {
 	}
 }
 
-//	func RequireRoles(roles ...string) gin.HandlerFunc {
-//		return func(c *gin.Context) {
-//			role := c.GetString("role")
-//			for _, allowed := range roles {
-//				if role == allowed {
-//					c.Next()
-//					return
-//				}
-//			}
-//			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-//		}
-//	}
 func RequireRoles(roles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userRole, exists := c.Get("Role")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Role information not found"})
-			c.Abort()
-			return
-		}
-
-		roleStr, ok := userRole.(string)
-		if !ok {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid role format"})
-			c.Abort()
-			return
-		}
-
-		for _, role := range roles {
-			if roleStr == role {
+		role := c.GetString("role")
+		for _, allowed := range roles {
+			if role == allowed {
 				c.Next()
 				return
 			}
 		}
-
-		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 	}
 }
+
+//fkjdslf
