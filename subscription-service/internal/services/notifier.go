@@ -9,12 +9,15 @@ import (
 
 // Notifier handles background subscription expiration checks and notifications
 type Notifier struct {
-	subscriptionService SubscriptionService
+	subscriptionService *SubscriptionService
 	notificationService NotificationService
+}
+type NotificationService interface {
+	SendSubscriptionNotification(ctx context.Context, sub models.Subscription, event string, data map[string]string) error
 }
 
 // NewNotifier creates a new Notifier
-func NewNotifier(subscriptionService SubscriptionService, notificationService NotificationService) *Notifier {
+func NewNotifier(subscriptionService *SubscriptionService, notificationService NotificationService) *Notifier {
 	return &Notifier{
 		subscriptionService: subscriptionService,
 		notificationService: notificationService,
@@ -62,8 +65,15 @@ func (n *Notifier) sendExpiringNotifications(ctx context.Context) {
 	}
 
 	for _, sub := range subs {
+		expiryInfo := ""
+		if sub.NextPlannedDate != nil {
+			expiryInfo = sub.NextPlannedDate.Format("2006-01-02")
+		} else {
+			expiryInfo = "unknown"
+		}
+
 		err := n.notificationService.SendSubscriptionNotification(ctx, sub, "expiring_soon", map[string]string{
-			"expiry_date": sub.EndDate.Format("2006-01-02"),
+			"expiry_date": expiryInfo,
 		})
 
 		if err != nil {
