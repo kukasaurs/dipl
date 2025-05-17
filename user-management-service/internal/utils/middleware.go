@@ -88,3 +88,5 @@ func RequireRoles(roles ...string) gin.HandlerFunc {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 	}
 }
+
+//fkjdslf
