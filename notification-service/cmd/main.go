@@ -85,6 +85,7 @@ func main() {
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
+
 	api := router.Group("/api/notifications")
 	{
 		// Публичные маршруты

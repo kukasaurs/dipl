@@ -6,6 +6,7 @@ import (
 	"cleaning-app/subscription-service/internal/repository"
 	"cleaning-app/subscription-service/internal/services"
 	"cleaning-app/subscription-service/internal/utils"
+
 	"context"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -57,9 +58,10 @@ func main() {
 	// 6. Настройка Gin и CORS
 	router := gin.Default()
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://host.docker.internal"},
+		AllowOrigins:     []string{"http://localhost:3000", "http://host.docker.internal:8004"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
@@ -68,6 +70,7 @@ func main() {
 	authMW := utils.AuthMiddleware(cfg.AuthServiceURL)
 
 	api := router.Group("/api/subscriptions", authMW)
+	api.Use(authMW)
 	{
 		api.POST("/", subHandler.Create)
 		api.POST("/extend/:id", subHandler.Extend)

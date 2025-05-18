@@ -17,6 +17,7 @@ type OrderRepository interface {
 	GetByClientID(ctx context.Context, clientID string) ([]models.Order, error)
 	GetAll(ctx context.Context) ([]models.Order, error)
 	Filter(ctx context.Context, filter bson.M) ([]models.Order, error)
+	UnassignCleaner(ctx context.Context, id primitive.ObjectID) error
 }
 
 type orderRepository struct {
@@ -80,4 +81,15 @@ func (r *orderRepository) Filter(ctx context.Context, filter bson.M) ([]models.O
 	var orders []models.Order
 	err = cursor.All(ctx, &orders)
 	return orders, err
+}
+func (r *orderRepository) UnassignCleaner(ctx context.Context, id primitive.ObjectID) error {
+	update := bson.M{
+		"$unset": bson.M{"cleaner_id": ""}, // Удаляем поле
+		"$set": bson.M{
+			"status":     models.StatusPending,
+			"updated_at": time.Now(),
+		},
+	}
+	_, err := r.collection.UpdateByID(ctx, id, update)
+	return err
 }
