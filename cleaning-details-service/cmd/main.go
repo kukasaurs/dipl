@@ -64,11 +64,6 @@ func main() { //comment for nurda
 	router := mux.NewRouter()
 	router.Use(utils.LoggingMiddleware)
 
-	// Public endpoints
-	publicRouter := router.PathPrefix("/api/services").Subrouter()
-	publicRouter.HandleFunc("/active", serviceHandler.GetActiveServices).Methods(http.MethodGet)
-	publicRouter.HandleFunc("/by-ids", serviceHandler.GetServicesByIDs).Methods(http.MethodPost)
-
 	// Admin endpoints with authentication
 	adminRouter := router.PathPrefix("/api/admin/services").Subrouter()
 	adminRouter.Use(utils.JWTWithAuth(authClient, "admin"))
@@ -78,6 +73,11 @@ func main() { //comment for nurda
 	adminRouter.HandleFunc("", serviceHandler.UpdateService).Methods(http.MethodPut)
 	adminRouter.HandleFunc("/{id}", serviceHandler.DeleteService).Methods(http.MethodDelete)
 	adminRouter.HandleFunc("/{id}/status", serviceHandler.ToggleServiceStatus).Methods(http.MethodPatch)
+
+	// Public endpoints
+	publicRouter := router.PathPrefix("/api/services").Subrouter()
+	publicRouter.HandleFunc("/active", serviceHandler.GetActiveServices).Methods(http.MethodGet)
+	publicRouter.HandleFunc("/by-ids", serviceHandler.GetServicesByIDs).Methods(http.MethodPost)
 
 	// Start server
 	server := &http.Server{
