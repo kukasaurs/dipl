@@ -71,6 +71,18 @@ services:
     depends_on:
       - mongodb
       - auth-service
+  payment-service:
+    build: ./payment-service
+    ports:
+      - "8005:8005"
+    environment:
+      - JWT_SECRET=jani-secret
+      - AUTH_SERVICE_URL=http://auth-service:8000
+    env_file:
+      - .env.docker
+    depends_on:
+      - mongodb
+      - auth-service
   user-management-service:
     build: ./user-management-service
     ports:

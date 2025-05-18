@@ -58,6 +58,23 @@ func (s *orderService) CreateOrder(ctx context.Context, order *models.Order) err
 	if err := s.redis.Del(ctx, fmt.Sprintf("orders_by_client:%s", order.ClientID)).Err(); err != nil {
 		log.Printf("Failed to invalidate cache: %v", err)
 	}
+
+	managers, err := utils.GetManagers(ctx, s.cfg.AuthServiceURL)
+	if err != nil {
+		log.Printf("[NOTIFY] Ошибка получения менеджеров: %v\n", err)
+	} else {
+		for _, m := range managers {
+			_ = utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
+				UserID:       m.ID,
+				Role:         "manager",
+				Title:        "Новый заказ",
+				Message:      "Создан новый заказ. Назначьте клинера.",
+				Type:         "new_order",
+				DeliveryType: "push",
+			})
+		}
+	}
+
 	utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
 		UserID:       order.ClientID,
 		Role:         "user",

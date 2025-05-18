@@ -7,12 +7,14 @@ import (
 	"cleaning-app/order-service/internal/services"
 	"cleaning-app/order-service/internal/utils"
 	"context"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 	"net/http"
+	"time"
 )
 
 func main() {
@@ -64,10 +66,22 @@ func main() {
 	cacheRefresher := services.NewCacheRefresher(orderService, rdb)
 	cacheRefresher.Start(ctx)
 
+	cron := services.NewCronJobService(orderRepo, cfg)
+	cron.Start(ctx)
+
 	// 6. Настройка роутера
 	router := gin.Default()
-	router.Use(utils.AuthMiddleware(cfg.AuthServiceURL))
 
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:8001"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
+
+	router.Use(utils.AuthMiddleware(cfg.AuthServiceURL))
 	orders := router.Group("/api/orders")
 	{
 		orders.POST("/", orderHandler.CreateOrder)
@@ -93,7 +107,7 @@ func main() {
 
 	// 7. Запуск сервера
 	server := &http.Server{
-		Addr:    ":8001",
+		Addr:    cfg.ServerPort,
 		Handler: router,
 	}
 

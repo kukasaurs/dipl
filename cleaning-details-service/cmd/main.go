@@ -1,19 +1,20 @@
 package main
 
 import (
-	"context"
-	"log"
-	"net/http"
-
-	"github.com/gorilla/mux"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-
 	"cleaning-app/cleaning-details-service/config"
 	"cleaning-app/cleaning-details-service/internal/handler"
 	"cleaning-app/cleaning-details-service/internal/repository"
 	"cleaning-app/cleaning-details-service/internal/service"
 	"cleaning-app/cleaning-details-service/utils"
+	"context"
+	"github.com/rs/cors"
+
+	"github.com/gorilla/mux"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"log"
+	"net/http"
+	"time"
 )
 
 func main() { //comment for nurda
@@ -64,6 +65,20 @@ func main() { //comment for nurda
 	router := mux.NewRouter()
 	router.Use(utils.LoggingMiddleware)
 
+	router.Use(cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:3000", "http://host.docker.internal:8003"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposedHeaders:   []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           int((12 * time.Hour).Seconds()),
+	}).Handler)
+
+	// Public endpoints
+	publicRouter := router.PathPrefix("/api/services").Subrouter()
+	publicRouter.HandleFunc("/active", serviceHandler.GetActiveServices).Methods(http.MethodGet)
+	publicRouter.HandleFunc("/by-ids", serviceHandler.GetServicesByIDs).Methods(http.MethodPost)
+
 	// Admin endpoints with authentication
 	adminRouter := router.PathPrefix("/api/admin/services").Subrouter()
 	adminRouter.Use(utils.JWTWithAuth(authClient, "admin"))
@@ -74,14 +89,9 @@ func main() { //comment for nurda
 	adminRouter.HandleFunc("/{id}", serviceHandler.DeleteService).Methods(http.MethodDelete)
 	adminRouter.HandleFunc("/{id}/status", serviceHandler.ToggleServiceStatus).Methods(http.MethodPatch)
 
-	// Public endpoints
-	publicRouter := router.PathPrefix("/api/services").Subrouter()
-	publicRouter.HandleFunc("/active", serviceHandler.GetActiveServices).Methods(http.MethodGet)
-	publicRouter.HandleFunc("/by-ids", serviceHandler.GetServicesByIDs).Methods(http.MethodPost)
-
 	// Start server
 	server := &http.Server{
-		Addr:    ":" + cfg.ServerPort,
+		Addr:    cfg.ServerPort,
 		Handler: router,
 	}
 
