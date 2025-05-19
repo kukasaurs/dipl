@@ -14,7 +14,6 @@ services:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
-
   auth-service:
     build: ./auth-service
     ports:
@@ -96,22 +95,23 @@ services:
     depends_on:
       - mongodb
       - auth-service
-  review-media-service:
-    build: ./review-media-service
+  support-service:
+    build: ./support-service
     ports:
       - "8007:8007"
     environment:
       - JWT_SECRET=jani-secret
       - AUTH_SERVICE_URL=http://auth-service:8000
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8002
     env_file:
       - .env.docker
     depends_on:
       - mongodb
+      - redis
       - auth-service
-
+      - notification-service
 
 
 volumes:
   mongodb_data:
   redis_data:
-  minio_data:
