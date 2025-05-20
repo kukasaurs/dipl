@@ -22,7 +22,7 @@ func NewCacheRefresher(orderService OrderService, redis *redis.Client) *CacheRef
 }
 
 func (cr *CacheRefresher) Start(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Minute) // обновлять каждые 5 минут
+	ticker := time.NewTicker(30 * time.Second) // обновлять каждые 5 минут
 	go func() {
 		for {
 			select {

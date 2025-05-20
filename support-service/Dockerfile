@@ -10,5 +10,5 @@ WORKDIR /app
 COPY --from=builder /app/support-service .
 COPY --from=builder /app/.env .
 
-EXPOSE 8007
+EXPOSE 8008
 CMD ["./support-service"]

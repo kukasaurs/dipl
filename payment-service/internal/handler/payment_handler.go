@@ -35,7 +35,6 @@ func (h *Handler) Pay(w http.ResponseWriter, r *http.Request) {
 		"client_secret": "mock_client_secret_123",
 	}
 
-	// 💬 отправляем уведомление в order-service
 	go func() {
 		if err := utils.NotifyOrderService(h.OrderServiceURL, req.OrderID, resp["status"]); err != nil {
 			log.Printf("[NOTIFY ERROR] %v", err)

@@ -6,15 +6,15 @@ import (
 	"cleaning-app/subscription-service/internal/repository"
 	"cleaning-app/subscription-service/internal/services"
 	"cleaning-app/subscription-service/internal/utils"
+
 	"context"
 	"github.com/gin-contrib/cors"
-	"log"
-	"net/http"
-	"time"
-
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"log"
+	"net/http"
+	"time"
 )
 
 func main() {
@@ -22,41 +22,40 @@ func main() {
 	ctx, shutdownManager := utils.NewShutdownManager(baseCtx)
 	shutdownManager.StartListening()
 
-	// Загрузка конфигурации
+	// 1. Загрузка конфигурации
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatal("Failed to load config:", err)
 	}
 
-	// Подключение к MongoDB
+	// 2. Подключение к MongoDB
 	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoURI))
 	if err != nil {
 		log.Fatal("Mongo connection failed:", err)
 	}
+	db := mongoClient.Database("cleaning_service")
 
-	// Регистрация завершения работы MongoDB
 	shutdownManager.Register(func(ctx context.Context) error {
 		log.Println("[SHUTDOWN] Closing MongoDB connection...")
 		return mongoClient.Disconnect(ctx)
 	})
 
-	db := mongoClient.Database("cleaning_service")
-
-	// Инициализация слоев
+	// 3. Инициализация зависимостей
 	repo := repository.NewSubscriptionRepository(db)
 
-	// Создание сервисов
-	subscriptionService := services.NewSubscriptionService(repo, cfg)
-	notificationService := services.NewNotificationService(cfg)
+	orderClient := utils.NewOrderClient(cfg.OrderServiceURL)
+	paymentClient := utils.NewPaymentClient(cfg.PaymentServiceURL)
 
-	// Создание обработчиков с инъекцией сервисов
-	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
-
-	// Запуск фоновых задач
-	notifier := services.NewNotifier(subscriptionService, notificationService)
+	subService := services.NewSubscriptionService(repo, orderClient, paymentClient)
+	notifier := services.NewNotifier(subService, nil) // если тебе нужны уведомления — передай NotificationService
 	go notifier.Start(ctx)
+	// 4. Обработчики
+	subHandler := handler.NewSubscriptionHandler(subService)
 
-	// Инициализация маршрутизатора
+	// 5. Cron-задача авто-заказов по подписке
+	go utils.StartSubscriptionScheduler(ctx, subService.ProcessDailyOrders)
+
+	// 6. Настройка Gin и CORS
 	router := gin.Default()
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:3000", "http://host.docker.internal:8004"},
@@ -67,27 +66,27 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Apply auth middleware to the router
-	authMiddleware := utils.AuthMiddleware(cfg.AuthServiceURL)
+	// 7. Middleware
+	authMW := utils.AuthMiddleware(cfg.AuthServiceURL)
 
-	api := router.Group("/api/subscriptions")
+	api := router.Group("/api/subscriptions", authMW)
+	api.Use(authMW)
 	{
-		// Apply auth middleware to specific routes that need it
-		api.POST("/", authMiddleware, subscriptionHandler.Create)
-		api.PUT("/:id", authMiddleware, subscriptionHandler.Update)
-		api.DELETE("/:id", authMiddleware, subscriptionHandler.Cancel)
-		api.GET("/my", authMiddleware, subscriptionHandler.GetMy)
-		api.POST("/extend/:id", authMiddleware, subscriptionHandler.Extend)
-		api.GET("/", authMiddleware, subscriptionHandler.GetAll)
+		api.POST("/", subHandler.Create)
+		api.POST("/extend/:id", subHandler.Extend)
+		api.GET("/my", subHandler.GetMy)
+		api.GET("/", subHandler.GetAll)
+		// Если остались:
+		api.PUT("/:id", subHandler.Update)
+		api.DELETE("/:id", subHandler.Cancel)
 	}
 
-	// Настройка HTTP сервера
+	// 8. HTTP-сервер
 	server := &http.Server{
 		Addr:    cfg.ServerPort,
 		Handler: router,
 	}
 
-	// Запуск сервера в горутине
 	go func() {
 		log.Println("Subscription service running on", cfg.ServerPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -95,12 +94,10 @@ func main() {
 		}
 	}()
 
-	// Регистрация завершения работы HTTP сервера
 	shutdownManager.Register(func(ctx context.Context) error {
 		log.Println("[SHUTDOWN] Shutting down HTTP server...")
 		return server.Shutdown(ctx)
 	})
 
-	// Ожидание сигналов завершения
 	select {}
 }

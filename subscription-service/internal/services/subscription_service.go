@@ -1,220 +1,119 @@
 package services
 
 import (
-	"cleaning-app/subscription-service/internal/config"
 	"cleaning-app/subscription-service/internal/models"
 	"cleaning-app/subscription-service/internal/repository"
+	"cleaning-app/subscription-service/internal/utils"
 	"context"
-	"fmt"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// SubscriptionService defines the operations for managing subscriptions
-type SubscriptionService interface {
-	// Create creates a new subscription
-	Create(ctx context.Context, sub *models.Subscription) error
-
-	// Update updates an existing subscription
-	Update(ctx context.Context, id primitive.ObjectID, update bson.M) error
-
-	// Cancel cancels a subscription
-	Cancel(ctx context.Context, id primitive.ObjectID) error
-
-	// GetByClient retrieves all subscriptions for a specific client
-	GetByClient(ctx context.Context, clientID string) ([]models.Subscription, error)
-
-	// GetAll retrieves all subscriptions (admin/manager access)
-	GetAll(ctx context.Context) ([]models.Subscription, error)
-
-	// Extend extends an existing subscription by specified duration
-	Extend(ctx context.Context, id primitive.ObjectID, durationDays int) error
-
-	// FindExpiringOn finds subscriptions that expire on a specific date
-	FindExpiringOn(ctx context.Context, date time.Time) ([]models.Subscription, error)
-
-	// FindExpired finds subscriptions that have expired before a specific date
-	FindExpired(ctx context.Context, before time.Time) ([]models.Subscription, error)
-
-	// UpdateStatus updates the status of a subscription
-	UpdateStatus(ctx context.Context, id primitive.ObjectID, status models.SubscriptionStatus) error
-}
-
-type subscriptionService struct {
-	repo *repository.SubscriptionRepository
-	cfg  *config.Config
-}
-
-// NewSubscriptionService creates a new subscription service
-func NewSubscriptionService(repo *repository.SubscriptionRepository, cfg *config.Config) SubscriptionService {
-	return &subscriptionService{
-		repo: repo,
-		cfg:  cfg,
+type SubscriptionService struct {
+	repo         *repository.SubscriptionRepository
+	orderService struct {
+		CreateOrderFromSubscription func(ctx context.Context, sub models.Subscription) error
+		Payment                     *utils.PaymentServiceClient
 	}
 }
 
-func (s *subscriptionService) Create(ctx context.Context, sub *models.Subscription) error {
+func NewSubscriptionService(
+	repo *repository.SubscriptionRepository,
+	orderClient *utils.OrderServiceClient,
+	paymentClient *utils.PaymentServiceClient,
+) *SubscriptionService {
+	s := &SubscriptionService{repo: repo}
+	s.orderService.CreateOrderFromSubscription = orderClient.CreateOrderFromSubscription
+	s.orderService.Payment = paymentClient
+	return s
+}
+
+func (s *SubscriptionService) Create(ctx context.Context, sub *models.Subscription) error {
 	sub.Status = models.StatusActive
-	sub.CreatedAt = time.Now()
-	sub.UpdatedAt = time.Now()
-
-	err := s.repo.Create(ctx, sub)
-	if err != nil {
-		return fmt.Errorf("failed to create subscription: %w", err)
-	}
-
-	// Log the subscription creation
-	logDetails := map[string]string{
-		"start_date": sub.StartDate.Format(time.RFC3339),
-		"end_date":   sub.EndDate.Format(time.RFC3339),
-	}
-
-	err = LogSubscriptionAction(ctx, s.repo.DB(), sub.ID, sub.ClientID, "created", logDetails)
-	if err != nil {
-		// Just log the error but don't fail the operation
-		fmt.Printf("failed to log subscription creation: %v\n", err)
-	}
-
-	return nil
+	sub.RemainingCleanings = sub.TotalCleanings
+	nextDate := utils.NextValidDate(sub.DaysOfWeek, time.Now())
+	sub.NextPlannedDate = &nextDate
+	return s.repo.Create(ctx, sub)
 }
 
-func (s *subscriptionService) Update(ctx context.Context, id primitive.ObjectID, update bson.M) error {
-	// Always update the UpdatedAt field
-	if update == nil {
-		update = bson.M{}
-	}
-	update["updated_at"] = time.Now()
-
-	err := s.repo.Update(ctx, id, update)
-	if err != nil {
-		return fmt.Errorf("failed to update subscription: %w", err)
-	}
-
-	// Convert update values to strings for logging
-	convertedUpdate := make(map[string]string)
-	for k, v := range update {
-		convertedUpdate[k] = fmt.Sprintf("%v", v)
-	}
-
-	// Get user ID from context if available
-	var userID string
-	if ctx.Value("user_id") != nil {
-		userID = ctx.Value("user_id").(string)
-	}
-
-	// Log the subscription update
-	err = LogSubscriptionAction(ctx, s.repo.DB(), id, userID, "updated", convertedUpdate)
-	if err != nil {
-		// Just log the error but don't fail the operation
-		fmt.Printf("failed to log subscription update: %v\n", err)
-	}
-
-	return nil
+func (s *SubscriptionService) Extend(ctx context.Context, id primitive.ObjectID, days int) error {
+	return s.repo.Update(ctx, id, map[string]interface{}{
+		"remaining_cleanings": bson.M{"$inc": days},
+		"status":              models.StatusActive,
+	})
 }
 
-func (s *subscriptionService) Cancel(ctx context.Context, id primitive.ObjectID) error {
-	err := s.repo.Cancel(ctx, id)
-	if err != nil {
-		return fmt.Errorf("failed to cancel subscription: %w", err)
-	}
-
-	// Get user ID from context if available
-	var userID string
-	if ctx.Value("user_id") != nil {
-		userID = ctx.Value("user_id").(string)
-	}
-
-	// Log the subscription cancellation
-	err = LogSubscriptionAction(ctx, s.repo.DB(), id, userID, "cancelled", nil)
-	if err != nil {
-		// Just log the error but don't fail the operation
-		fmt.Printf("failed to log subscription cancellation: %v\n", err)
-	}
-
-	return nil
+func (s *SubscriptionService) GetByClient(ctx context.Context, clientID string) ([]models.Subscription, error) {
+	return s.repo.GetByClient(ctx, clientID)
 }
 
-func (s *subscriptionService) GetByClient(ctx context.Context, clientID string) ([]models.Subscription, error) {
-	subs, err := s.repo.GetByClient(ctx, clientID)
+func (s *SubscriptionService) ProcessDailyOrders(ctx context.Context) {
+	subs, err := s.repo.GetActiveSubscriptions(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get client subscriptions: %w", err)
+		return
 	}
-	return subs, nil
+	today := time.Now().Weekday().String()
+
+	for _, sub := range subs {
+		if !utils.DayMatch(sub.DaysOfWeek, today) {
+			continue
+		}
+		if sub.NextPlannedDate != nil && !utils.IsToday(*sub.NextPlannedDate) {
+			continue
+		}
+		if sub.RemainingCleanings == 0 {
+			// За 2 дня до уборки — пытаемся выставить оплату
+			twoDaysBefore := time.Now().Add(48 * time.Hour)
+			if utils.DayMatch(sub.DaysOfWeek, twoDaysBefore.Weekday().String()) {
+				_ = s.orderService.Payment.PayForCleanings(ctx, sub.ClientID, sub.ID.Hex(), 1)
+			}
+			continue
+		}
+
+		err := s.orderService.CreateOrderFromSubscription(ctx, sub)
+		if err == nil {
+			next := utils.NextValidDate(sub.DaysOfWeek, time.Now().Add(24*time.Hour))
+			_ = s.repo.UpdateAfterOrder(ctx, sub.ID, next)
+
+			if sub.RemainingCleanings <= 1 {
+				_ = s.repo.SetExpired(ctx, sub.ID)
+			}
+		}
+	}
+
+}
+func (s *SubscriptionService) InitPayment(ctx context.Context, sub models.Subscription) error {
+	return s.orderService.Payment.PayForCleanings(ctx, sub.ClientID, sub.ID.Hex(), sub.TotalCleanings)
 }
 
-func (s *subscriptionService) GetAll(ctx context.Context) ([]models.Subscription, error) {
-	subs, err := s.repo.GetAll(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get all subscriptions: %w", err)
-	}
-	return subs, nil
-}
-
-func (s *subscriptionService) Extend(ctx context.Context, id primitive.ObjectID, durationDays int) error {
-	// First get the current subscription to know the end date
+func (s *SubscriptionService) PayForExtension(ctx context.Context, id primitive.ObjectID, cleanings int) error {
 	sub, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		return fmt.Errorf("failed to find subscription: %w", err)
+		return err
 	}
-
-	// Calculate new end date
-	var newEndDate time.Time
-	if sub.Status == models.StatusExpired {
-		// If expired, extend from now
-		newEndDate = time.Now().Add(time.Hour * 24 * time.Duration(durationDays))
-	} else {
-		// If active, extend from current end date
-		newEndDate = sub.EndDate.Add(time.Hour * 24 * time.Duration(durationDays))
-	}
-
-	// Create update document
-	update := bson.M{
-		"end_date": newEndDate,
-		"status":   models.StatusActive,
-	}
-
-	// Update the subscription
-	err = s.repo.Update(ctx, id, update)
-	if err != nil {
-		return fmt.Errorf("failed to extend subscription: %w", err)
-	}
-
-	// Log the extension
-	details := map[string]string{
-		"duration_days": fmt.Sprintf("%d", durationDays),
-		"new_end_date":  newEndDate.Format(time.RFC3339),
-	}
-
-	// Get user ID from context if available
-	var userID string
-	if ctx.Value("user_id") != nil {
-		userID = ctx.Value("user_id").(string)
-	} else {
-		userID = sub.ClientID // Default to the subscription's client ID
-	}
-
-	err = LogSubscriptionAction(ctx, s.repo.DB(), id, userID, "extended", details)
-	if err != nil {
-		// Just log the error but don't fail the operation
-		fmt.Printf("failed to log subscription extension: %v\n", err)
-	}
-
-	return nil
+	return s.orderService.Payment.PayForCleanings(ctx, sub.ClientID, sub.ID.Hex(), cleanings)
+}
+func (s *SubscriptionService) GetAll(ctx context.Context) ([]models.Subscription, error) {
+	return s.repo.GetAll(ctx)
 }
 
-func (s *subscriptionService) FindExpiringOn(ctx context.Context, date time.Time) ([]models.Subscription, error) {
-	return s.repo.FindExpiringOn(ctx, date)
+func (s *SubscriptionService) Update(ctx context.Context, id primitive.ObjectID, update map[string]interface{}) error {
+	return s.repo.Update(ctx, id, update)
 }
 
-func (s *subscriptionService) FindExpired(ctx context.Context, before time.Time) ([]models.Subscription, error) {
+func (s *SubscriptionService) Cancel(ctx context.Context, id primitive.ObjectID) error {
+	return s.repo.Update(ctx, id, map[string]interface{}{"status": models.StatusCancelled})
+}
+func (s *SubscriptionService) FindExpiringOn(ctx context.Context, targetDate time.Time) ([]models.Subscription, error) {
+	return s.repo.FindExpiringOn(ctx, targetDate)
+}
+
+func (s *SubscriptionService) FindExpired(ctx context.Context, before time.Time) ([]models.Subscription, error) {
 	return s.repo.FindExpired(ctx, before)
 }
 
-func (s *subscriptionService) UpdateStatus(ctx context.Context, id primitive.ObjectID, status models.SubscriptionStatus) error {
-	update := bson.M{
-		"status": status,
-	}
-
-	return s.repo.Update(ctx, id, update)
+func (s *SubscriptionService) UpdateStatus(ctx context.Context, id primitive.ObjectID, status models.SubscriptionStatus) error {
+	return s.repo.Update(ctx, id, map[string]interface{}{"status": status})
 }

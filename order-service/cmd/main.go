@@ -73,16 +73,17 @@ func main() {
 	router := gin.Default()
 
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:8001"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
+		AllowOrigins:     []string{"http://localhost:3000", "http://host.docker.internal:8001"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
+	authMW := utils.AuthMiddleware(cfg.AuthServiceURL)
 
-	router.Use(utils.AuthMiddleware(cfg.AuthServiceURL))
 	orders := router.Group("/api/orders")
+	orders.Use(authMW)
 	{
 		orders.POST("/", orderHandler.CreateOrder)
 		orders.GET("/my", orderHandler.GetMyOrders)

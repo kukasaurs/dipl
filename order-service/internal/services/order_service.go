@@ -215,19 +215,17 @@ func (s *orderService) AssignCleaner(ctx context.Context, id primitive.ObjectID,
 }
 
 func (s *orderService) UnassignCleaner(ctx context.Context, id primitive.ObjectID) error {
+	// Получаем заказ только для ClientID
 	order, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	order.CleanerID = nil
-	order.Status = models.StatusPending
 
 	cacheKey := fmt.Sprintf("orders_by_client:%s", order.ClientID)
 	_ = s.redis.Del(ctx, cacheKey).Err()
 
-	return s.repo.Update(ctx, order)
+	return s.repo.UnassignCleaner(ctx, id)
 }
-
 func (s *orderService) ConfirmCompletion(ctx context.Context, id primitive.ObjectID, photoURL string) error {
 	order, err := s.repo.GetByID(ctx, id)
 	if err != nil {

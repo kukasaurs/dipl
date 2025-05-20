@@ -7,24 +7,25 @@ import (
 
 type Config struct {
 	MongoURI               string
-	MongoDB                string
-	NotificationServiceURL string
+	MinioEndpoint          string
+	MinioAccessKey         string
+	MinioSecretKey         string
+	BucketName             string
 	JWTSecret              string
+	NotificationServiceURL string
 	AuthServiceURL         string
-	ServerPort             string
 }
 
 func LoadConfig() (*Config, error) {
-	if err := godotenv.Load(); err != nil {
-		return nil, err
-	}
-
+	_ = godotenv.Load()
 	return &Config{
 		MongoURI:               os.Getenv("MONGO_URI"),
+		MinioEndpoint:          os.Getenv("MINIO_ENDPOINT"),
+		MinioAccessKey:         os.Getenv("MINIO_ACCESS_KEY"),
+		MinioSecretKey:         os.Getenv("MINIO_SECRET_KEY"),
+		BucketName:             os.Getenv("MINIO_BUCKET"),
 		JWTSecret:              os.Getenv("JWT_SECRET"),
-		MongoDB:                os.Getenv("MONGO_DB"),
 		NotificationServiceURL: os.Getenv("NOTIFICATION_SERVICE_URL"),
 		AuthServiceURL:         os.Getenv("AUTH_SERVICE_URL"),
-		ServerPort:             os.Getenv("SERVER_PORT"),
 	}, nil
 }
