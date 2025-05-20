@@ -95,10 +95,22 @@ services:
     depends_on:
       - mongodb
       - auth-service
+  review-media-service:
+    build: ./review-media-service
+    ports:
+      - "8007:8007"
+    environment:
+      - JWT_SECRET=jani-secret
+      - AUTH_SERVICE_URL=http://auth-service:8000
+    env_file:
+      - .env.docker
+    depends_on:
+      - mongodb
+      - auth-service
   support-service:
     build: ./support-service
     ports:
-      - "8007:8007"
+      - "8008:8008"
     environment:
       - JWT_SECRET=jani-secret
       - AUTH_SERVICE_URL=http://auth-service:8000
@@ -110,7 +122,6 @@ services:
       - redis
       - auth-service
       - notification-service
-
 
 volumes:
   mongodb_data:

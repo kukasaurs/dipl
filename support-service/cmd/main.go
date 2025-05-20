@@ -7,66 +7,70 @@ import (
 	"cleaning-app/support-service/internal/services"
 	"cleaning-app/support-service/internal/utils"
 	"context"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-
 	"log"
 	"net/http"
+	"time"
 )
 
 func main() {
-
 	baseCtx := context.Background()
 	ctx, shutdownManager := utils.NewShutdownManager(baseCtx)
 	shutdownManager.StartListening()
 
-	// Загрузка конфигурации
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatal("Failed to load config:", err)
 	}
 
-	// MongoDB
 	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoURI))
 	if err != nil {
 		log.Fatal("Mongo connection failed:", err)
 	}
+	db := mongoClient.Database("cleaning_service")
 
-	// Регистрация завершения работы MongoDB
 	shutdownManager.Register(func(ctx context.Context) error {
 		log.Println("[SHUTDOWN] Closing MongoDB connection...")
 		return mongoClient.Disconnect(ctx)
 	})
 
-	db := mongoClient.Database(cfg.MongoDB)
+	repo := repository.NewSupportRepository(db)
+	notifier := utils.NewNotificationClient(cfg.NotificationServiceURL)
 
-	// Репозиторий, уведомления и сервис сообщений
-	repo := repository.NewChatRepository(db)
-	notifier := services.NewNotifierService(cfg.NotificationServiceURL)
-	chatService := services.NewChatService(repo, notifier)
-	chatHandler := handler.NewChatHandler(chatService)
+	supportService := services.NewSupportService(repo, notifier)
+	supportHandler := handler.NewSupportHandler(supportService)
 
-	// Роутер и эндпоинты
 	router := gin.Default()
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 
-	authMiddleware := utils.AuthMiddleware(cfg.AuthServiceURL)
+	authMW := utils.AuthMiddleware(cfg.AuthServiceURL)
 
-	api := router.Group("/api/support")
+	api := router.Group("/api/support", authMW)
 	{
-		api.POST("/send", authMiddleware, chatHandler.SendMessage)
-		api.GET("/messages", authMiddleware, chatHandler.GetMessages)
+		api.POST("/tickets", supportHandler.CreateTicket)
+		api.GET("/tickets/my", supportHandler.GetMyTickets)
+		api.GET("/tickets", supportHandler.GetAllTickets)
+		api.PUT("/tickets/:id/status", supportHandler.UpdateTicketStatus)
+		api.POST("/tickets/:id/messages", supportHandler.SendMessage)
+		api.GET("/tickets/:id/messages", supportHandler.GetMessages)
 	}
 
-	// HTTP-сервер
 	server := &http.Server{
-		Addr:    ":8007",
+		Addr:    cfg.ServerPort,
 		Handler: router,
 	}
 
-	// Запуск HTTP-сервера
 	go func() {
-		log.Println("Support service running on :8007")
+		log.Println("Support service running on", cfg.ServerPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}

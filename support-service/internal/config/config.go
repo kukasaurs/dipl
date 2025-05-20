@@ -9,9 +9,9 @@ type Config struct {
 	MongoURI               string
 	MongoDB                string
 	NotificationServiceURL string
-	Port                   string
 	JWTSecret              string
 	AuthServiceURL         string
+	ServerPort             string
 }
 
 func LoadConfig() (*Config, error) {
@@ -24,7 +24,7 @@ func LoadConfig() (*Config, error) {
 		JWTSecret:              os.Getenv("JWT_SECRET"),
 		MongoDB:                os.Getenv("MONGO_DB"),
 		NotificationServiceURL: os.Getenv("NOTIFICATION_SERVICE_URL"),
-		Port:                   os.Getenv("PORT"),
 		AuthServiceURL:         os.Getenv("AUTH_SERVICE_URL"),
+		ServerPort:             os.Getenv("SERVER_PORT"),
 	}, nil
 }
