@@ -2,14 +2,14 @@ package main
 
 import (
 	"cleaning-app/cleaning-details-service/config"
-	"cleaning-app/cleaning-details-service/internal/handler"
+	handlers "cleaning-app/cleaning-details-service/internal/handler"
 	"cleaning-app/cleaning-details-service/internal/repository"
-	"cleaning-app/cleaning-details-service/internal/service"
+	services "cleaning-app/cleaning-details-service/internal/service"
 	"cleaning-app/cleaning-details-service/utils"
 	"context"
-	"github.com/rs/cors"
-
-	"github.com/gorilla/mux"
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
@@ -17,21 +17,24 @@ import (
 	"time"
 )
 
-func main() { //comment for nurda
-
+func main() {
 	baseCtx := context.Background()
 	ctx, shutdownManager := utils.NewShutdownManager(baseCtx)
 	shutdownManager.StartListening()
 
-	// Load configuration
+	// 1. Загрузка конфигурации
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("Error parsing configs: %v", err)
 	}
 
-	// Redis
-	redisClient := utils.NewRedisClient(cfg.RedisURL)
+	// 2. Redis
+	opts, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		log.Fatal("Invalid Redis URL:", err)
+	}
 
+	redisClient := redis.NewClient(opts)
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	} else {
@@ -40,10 +43,10 @@ func main() { //comment for nurda
 
 	shutdownManager.Register(func(ctx context.Context) error {
 		log.Println("[SHUTDOWN] Closing Redis connection...")
-		return utils.CloseRedis(ctx, redisClient)
+		return redisClient.Close()
 	})
 
-	// Connect to MongoDB
+	// 3. MongoDB
 	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoURI))
 	if err != nil {
 		log.Fatal("Failed to connect to MongoDB:", err)
@@ -55,46 +58,59 @@ func main() { //comment for nurda
 		return mongoClient.Disconnect(ctx)
 	})
 
-	// Initialize components
+	// 4. Инициализация компонентов
 	serviceRepo := repository.NewCleaningServiceRepository(db)
 	serviceSrv := services.NewCleaningService(serviceRepo, redisClient)
 	serviceHandler := handlers.NewCleaningServiceHandler(serviceSrv)
-	authClient := utils.NewAuthClient(cfg.AuthServiceURL)
 
-	// Setup router
-	router := mux.NewRouter()
-	router.Use(utils.LoggingMiddleware)
+	// 5. Инициализация Gin
+	router := gin.Default()
 
-	router.Use(cors.New(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000", "http://host.docker.internal:8003"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		ExposedHeaders:   []string{"Content-Length"},
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000", "http://host.docker.internal:8003"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
-		MaxAge:           int((12 * time.Hour).Seconds()),
-	}).Handler)
+		MaxAge:           12 * time.Hour,
+	}))
 
-	// Public endpoints
-	publicRouter := router.PathPrefix("/api/services").Subrouter()
-	publicRouter.HandleFunc("/active", serviceHandler.GetActiveServices).Methods(http.MethodGet)
-	publicRouter.HandleFunc("/by-ids", serviceHandler.GetServicesByIDs).Methods(http.MethodPost)
+	// 6. Публичные маршруты
+	public := router.Group("/api/services")
+	{
+		public.GET("/active", serviceHandler.GetActiveServices)
+		public.POST("/by-ids", serviceHandler.GetServicesByIDs)
+	}
 
-	// Admin endpoints with authentication
-	adminRouter := router.PathPrefix("/api/admin/services").Subrouter()
-	adminRouter.Use(utils.JWTWithAuth(authClient, "admin"))
+	// 7. Админ-маршруты с авторизацией
+	admin := router.Group("/api/admin")
+	admin.Use(utils.AuthMiddleware(cfg.AuthServiceURL))
+	admin.Use(utils.RequireRoles("admin"))
+	{
+		admin.GET("/services", serviceHandler.GetAllServices)
+		admin.POST("/services", serviceHandler.CreateService)
+		admin.PUT("/services", serviceHandler.UpdateService)
+		admin.DELETE("/services/:id", serviceHandler.DeleteService)
+		admin.PATCH("services/:id/status", serviceHandler.ToggleServiceStatus)
+	}
 
-	adminRouter.HandleFunc("", serviceHandler.GetAllServices).Methods(http.MethodGet)
-	adminRouter.HandleFunc("", serviceHandler.CreateService).Methods(http.MethodPost)
-	adminRouter.HandleFunc("", serviceHandler.UpdateService).Methods(http.MethodPut)
-	adminRouter.HandleFunc("/{id}", serviceHandler.DeleteService).Methods(http.MethodDelete)
-	adminRouter.HandleFunc("/{id}/status", serviceHandler.ToggleServiceStatus).Methods(http.MethodPatch)
-
-	// Start server
+	// 8. Запуск сервера
 	server := &http.Server{
 		Addr:    cfg.ServerPort,
 		Handler: router,
 	}
 
-	log.Printf("Server started on port %s", cfg.ServerPort)
-	log.Fatal(server.ListenAndServe())
+	go func() {
+		log.Printf("Server started on port %s", cfg.ServerPort)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server error: %v", err)
+		}
+	}()
+
+	shutdownManager.Register(func(ctx context.Context) error {
+		log.Println("[SHUTDOWN] Shutting down HTTP server...")
+		return server.Shutdown(ctx)
+	})
+
+	select {}
 }

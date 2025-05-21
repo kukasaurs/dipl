@@ -1,16 +1,13 @@
 package handlers
 
 import (
+	"cleaning-app/cleaning-details-service/internal/models"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-
-	"github.com/gorilla/mux"
+	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-
-	"cleaning-app/cleaning-details-service/internal/models"
+	"net/http"
 )
 
 type CleaningServiceService interface {
@@ -28,170 +25,137 @@ type CleaningServiceHandler struct {
 }
 
 func NewCleaningServiceHandler(service CleaningServiceService) *CleaningServiceHandler {
-	return &CleaningServiceHandler{
-		service: service,
-	}
+	return &CleaningServiceHandler{service: service}
 }
 
-// GetAllServices gets all cleaning services (admin only)
-func (h *CleaningServiceHandler) GetAllServices(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	services, err := h.service.GetAllServices(ctx)
+// --- Public ---
+func (h *CleaningServiceHandler) GetActiveServices(c *gin.Context) {
+	services, err := h.service.GetActiveServices(c.Request.Context())
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
-	respondWithJSON(w, http.StatusOK, services)
+	c.JSON(http.StatusOK, services)
 }
 
-// GetActiveServices gets all active cleaning services (public endpoint)
-func (h *CleaningServiceHandler) GetActiveServices(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	services, err := h.service.GetActiveServices(ctx)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	respondWithJSON(w, http.StatusOK, services)
-}
-
-// CreateService creates a new cleaning service
-func (h *CleaningServiceHandler) CreateService(w http.ResponseWriter, r *http.Request) {
-	service := new(models.CleaningService)
-	if err := json.NewDecoder(r.Body).Decode(service); err != nil {
-		respondWithError(w, http.StatusBadRequest, err)
-		return
-	}
-
-	ctx := r.Context()
-	if err := h.service.CreateService(ctx, service); err != nil {
-		if errors.Is(err, models.ErrDuplicate) {
-			respondWithError(w, http.StatusConflict, err)
-			return
-		}
-		respondWithError(w, http.StatusBadRequest, err)
-		return
-	}
-
-	respondWithJSON(w, http.StatusCreated, service)
-}
-
-// UpdateService updates a cleaning service
-func (h *CleaningServiceHandler) UpdateService(w http.ResponseWriter, r *http.Request) {
-	service := new(models.CleaningService)
-	if err := json.NewDecoder(r.Body).Decode(service); err != nil {
-		respondWithError(w, http.StatusBadRequest, err)
-		return
-	}
-
-	ctx := r.Context()
-	if err := h.service.UpdateService(ctx, service); err != nil {
-		handleServiceError(w, err)
-		return
-	}
-
-	respondWithJSON(w, http.StatusOK, service)
-}
-
-// DeleteService deletes a cleaning service
-func (h *CleaningServiceHandler) DeleteService(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id := vars["id"]
-	if id == "" {
-		respondWithError(w, http.StatusBadRequest, errors.New("invalid id"))
-		return
-	}
-
-	ctx := r.Context()
-	if err := h.service.DeleteService(ctx, id); err != nil {
-		handleServiceError(w, err)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// ToggleServiceStatus updates a cleaning service's active status
-func (h *CleaningServiceHandler) ToggleServiceStatus(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id := vars["id"]
-	if id == "" {
-		respondWithError(w, http.StatusBadRequest, errors.New("invalid id"))
-		return
-	}
-
-	statusUpdate := new(models.ServiceStatusUpdate)
-	if err := json.NewDecoder(r.Body).Decode(statusUpdate); err != nil {
-		respondWithError(w, http.StatusBadRequest, err)
-		return
-	}
-
-	ctx := r.Context()
-	if err := h.service.UpdateServiceStatus(ctx, id, statusUpdate.IsActive); err != nil {
-		handleServiceError(w, err)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// Helper functions
-func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(payload)
-}
-
-func respondWithError(w http.ResponseWriter, code int, err error) {
-	respondWithJSON(w, code, map[string]string{"error": err.Error()})
-}
-
-func handleServiceError(w http.ResponseWriter, err error) {
-	if errors.Is(err, models.ErrNotFound) {
-		respondWithError(w, http.StatusNotFound, err)
-		return
-	}
-
-	if errors.Is(err, models.ErrInvalidID) {
-		respondWithError(w, http.StatusBadRequest, err)
-		return
-	}
-
-	if errors.Is(err, models.ErrDuplicate) {
-		respondWithError(w, http.StatusConflict, err)
-		return
-	}
-
-	respondWithError(w, http.StatusInternalServerError, err)
-}
-func (h *CleaningServiceHandler) GetServicesByIDs(w http.ResponseWriter, r *http.Request) {
+func (h *CleaningServiceHandler) GetServicesByIDs(c *gin.Context) {
 	var req struct {
 		IDs []string `json:"ids"`
 	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
-		respondWithError(w, http.StatusBadRequest, errors.New("invalid request: missing or malformed IDs"))
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.IDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: missing or malformed IDs"})
 		return
 	}
 
-	// Преобразуем строки в ObjectID
 	objIDs := make([]primitive.ObjectID, 0, len(req.IDs))
 	for _, idStr := range req.IDs {
 		id, err := primitive.ObjectIDFromHex(idStr)
 		if err != nil {
-			respondWithError(w, http.StatusBadRequest, fmt.Errorf("invalid ObjectID: %s", idStr))
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid ObjectID: %s", idStr)})
 			return
 		}
 		objIDs = append(objIDs, id)
 	}
 
-	services, err := h.service.GetServicesByIDs(r.Context(), objIDs)
+	services, err := h.service.GetServicesByIDs(c.Request.Context(), objIDs)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, services)
+	c.JSON(http.StatusOK, services)
+}
+
+// --- Admin ---
+func (h *CleaningServiceHandler) GetAllServices(c *gin.Context) {
+	services, err := h.service.GetAllServices(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, services)
+}
+
+func (h *CleaningServiceHandler) CreateService(c *gin.Context) {
+	var service models.CleaningService
+	if err := c.ShouldBindJSON(&service); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.service.CreateService(c.Request.Context(), &service); err != nil {
+		if errors.Is(err, models.ErrDuplicate) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, service)
+}
+
+func (h *CleaningServiceHandler) UpdateService(c *gin.Context) {
+	var service models.CleaningService
+	if err := c.ShouldBindJSON(&service); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.service.UpdateService(c.Request.Context(), &service); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, service)
+}
+
+func (h *CleaningServiceHandler) DeleteService(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	if err := h.service.DeleteService(c.Request.Context(), id); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+func (h *CleaningServiceHandler) ToggleServiceStatus(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	var statusUpdate models.ServiceStatusUpdate
+	if err := c.ShouldBindJSON(&statusUpdate); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.service.UpdateServiceStatus(c.Request.Context(), id, statusUpdate.IsActive); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+// --- Helpers ---
+func handleServiceError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, models.ErrNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+	case errors.Is(err, models.ErrInvalidID):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	case errors.Is(err, models.ErrDuplicate):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	default:
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	}
 }
