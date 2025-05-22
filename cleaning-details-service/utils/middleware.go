@@ -26,7 +26,7 @@ func AuthMiddleware(authURL string) gin.HandlerFunc {
 			return
 		}
 
-		req, err := http.NewRequest("GET", authURL+"/api/auth/validate", nil)
+		req, err := http.NewRequest("GET", authURL+"/auth/validate", nil)
 		if err != nil {
 			log.Printf("[AUTH] Failed to create request: %v", err)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
@@ -87,20 +87,4 @@ func RequireRoles(roles ...string) gin.HandlerFunc {
 		}
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 	}
-}
-
-// LoggingMiddleware logs HTTP requests
-func LoggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-
-		next.ServeHTTP(w, r)
-
-		log.Printf(
-			"Method: %s | Path: %s | Duration: %s",
-			r.Method,
-			r.URL.Path,
-			time.Since(start),
-		)
-	})
 }

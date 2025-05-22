@@ -8,7 +8,7 @@ import (
 
 func main() {
 	h := handler.NewHandler()
-	http.HandleFunc("/api/payments", h.Pay)
+	http.HandleFunc("/payments", h.Pay)
 
 	log.Println("Mock Payment Service listening on :8005")
 	log.Fatal(http.ListenAndServe("0.0.0.0:8005", nil))

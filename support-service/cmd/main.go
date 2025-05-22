@@ -7,13 +7,11 @@ import (
 	"cleaning-app/support-service/internal/services"
 	"cleaning-app/support-service/internal/utils"
 	"context"
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 	"net/http"
-	"time"
 )
 
 func main() {
@@ -44,17 +42,9 @@ func main() {
 	supportHandler := handler.NewSupportHandler(supportService)
 
 	router := gin.Default()
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
-
 	authMW := utils.AuthMiddleware(cfg.AuthServiceURL)
 
-	api := router.Group("/api/support", authMW)
+	api := router.Group("/support", authMW)
 	{
 		api.POST("/tickets", supportHandler.CreateTicket)
 		api.GET("/tickets/my", supportHandler.GetMyTickets)

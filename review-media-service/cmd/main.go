@@ -8,13 +8,11 @@ import (
 	"cleaning-app/review-media-service/internal/utils"
 	"context"
 	"errors"
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 	"net/http"
-	"time"
 )
 
 func main() {
@@ -61,20 +59,11 @@ func main() {
 	// 7. Настройка роутера
 	router := gin.Default()
 
-	// Настройка CORS
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://host.docker.internal:8007"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
 	// Аутентификация
 	router.Use(utils.AuthMiddleware(cfg.AuthServiceURL))
 
 	// Группа маршрутов для отзывов
-	reviews := router.Group("/api/reviews")
+	reviews := router.Group("/reviews")
 	{
 		reviews.POST("/", reviewHandler.CreateReview)
 		reviews.GET("/user/:id", reviewHandler.GetReviewsByUser)
@@ -83,7 +72,7 @@ func main() {
 	}
 
 	// Группа маршрутов для медиа
-	media := router.Group("/api/media")
+	media := router.Group("/media")
 	{
 		media.POST("/upload", mediaHandler.Upload)
 		media.GET("/order/:order_id", mediaHandler.GetMediaByOrder)

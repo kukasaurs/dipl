@@ -26,7 +26,7 @@ func AuthMiddleware(authURL string) gin.HandlerFunc {
 			return
 		}
 
-		req, err := http.NewRequest("GET", authURL+"/api/auth/validate", nil)
+		req, err := http.NewRequest("GET", authURL+"/auth/validate", nil)
 		if err != nil {
 			log.Printf("[AUTH] Failed to create request: %v", err)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})

@@ -7,14 +7,12 @@ import (
 	services "cleaning-app/cleaning-details-service/internal/service"
 	"cleaning-app/cleaning-details-service/utils"
 	"context"
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 	"net/http"
-	"time"
 )
 
 func main() {
@@ -65,16 +63,7 @@ func main() {
 
 	// 5. Инициализация Gin
 	router := gin.Default()
-
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://host.docker.internal:8003"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
-
+	router.RedirectTrailingSlash = false
 	// 6. Публичные маршруты
 	public := router.Group("/api/services")
 	{
@@ -83,7 +72,7 @@ func main() {
 	}
 
 	// 7. Админ-маршруты с авторизацией
-	admin := router.Group("/api/admin")
+	admin := router.Group("/admin")
 	admin.Use(utils.AuthMiddleware(cfg.AuthServiceURL))
 	admin.Use(utils.RequireRoles("admin"))
 	{

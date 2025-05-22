@@ -7,14 +7,12 @@ import (
 	"cleaning-app/order-service/internal/services"
 	"cleaning-app/order-service/internal/utils"
 	"context"
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 	"net/http"
-	"time"
 )
 
 func main() {
@@ -72,17 +70,9 @@ func main() {
 	// 6. Настройка роутера
 	router := gin.Default()
 
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://host.docker.internal:8001"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
 	authMW := utils.AuthMiddleware(cfg.AuthServiceURL)
 
-	orders := router.Group("/api/orders")
+	orders := router.Group("/orders")
 	orders.Use(authMW)
 	{
 		orders.POST("/", orderHandler.CreateOrder)
