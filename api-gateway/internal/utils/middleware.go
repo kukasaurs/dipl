@@ -26,7 +26,7 @@ func AuthMiddleware(authURL string) gin.HandlerFunc {
 			return
 		}
 
-		req, err := http.NewRequest("GET", authURL+"/api/auth/validate", nil)
+		req, err := http.NewRequest("GET", authURL+"/auth/validate", nil)
 		if err != nil {
 			log.Printf("[AUTH] Failed to create request: %v", err)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
@@ -56,7 +56,6 @@ func AuthMiddleware(authURL string) gin.HandlerFunc {
 			return
 		}
 
-
 		// Проверяем banned
 		if data.Banned {
 			log.Printf("[AUTH] Access denied for banned user: %s", data.UserID)
@@ -74,5 +73,18 @@ func AuthMiddleware(authURL string) gin.HandlerFunc {
 		c.Set("userId", data.UserID)
 		c.Set("role", data.Role)
 		c.Next()
+	}
+}
+
+func RequireRoles(roles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role := c.GetString("role")
+		for _, allowed := range roles {
+			if role == allowed {
+				c.Next()
+				return
+			}
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 	}
 }

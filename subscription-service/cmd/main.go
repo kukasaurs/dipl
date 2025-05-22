@@ -8,13 +8,11 @@ import (
 	"cleaning-app/subscription-service/internal/utils"
 
 	"context"
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 	"net/http"
-	"time"
 )
 
 func main() {
@@ -55,21 +53,13 @@ func main() {
 	// 5. Cron-задача авто-заказов по подписке
 	go utils.StartSubscriptionScheduler(ctx, subService.ProcessDailyOrders)
 
-	// 6. Настройка Gin и CORS
+	// 6. Настройка Gin
 	router := gin.Default()
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://host.docker.internal:8004"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
 
 	// 7. Middleware
 	authMW := utils.AuthMiddleware(cfg.AuthServiceURL)
 
-	api := router.Group("/api/subscriptions", authMW)
+	api := router.Group("/subscriptions", authMW)
 	api.Use(authMW)
 	{
 		api.POST("/", subHandler.Create)

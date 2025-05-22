@@ -14,6 +14,23 @@ services:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - JWT_SECRET=jani-secret
+      - AUTH_SERVICE_URL=http://auth-service:8000
+    depends_on:
+      - auth-service
+      - order-service
+      - notification-service
+      - cleaning-details-service
+      - subscription-service
+      - payment-service
+      - user-management-service
+      - review-media-service
+      - support-service
   auth-service:
     build: ./auth-service
     ports:

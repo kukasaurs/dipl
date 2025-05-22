@@ -8,15 +8,12 @@ import (
 	"cleaning-app/notification-service/internal/utils"
 	"cleaning-app/notification-service/internal/utils/push"
 	"context"
-	"github.com/gin-contrib/cors"
-	"log"
-	"net/http"
-	"time"
-
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"log"
+	"net/http"
 )
 
 func main() {
@@ -77,16 +74,8 @@ func main() {
 
 	// 7. Инициализация маршрутов
 	router := gin.Default()
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://host.docker.internal:8002"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
 
-	api := router.Group("/api/notifications")
+	api := router.Group("/notifications")
 	{
 		// Публичные маршруты
 		api.POST("/send", notificationHandler.SendManualNotification)
