@@ -51,7 +51,7 @@ func (cr *CacheRefresher) refreshAllOrdersCache(ctx context.Context) {
 		return
 	}
 
-	err = cr.redis.Set(ctx, "all_orders", data, 10*time.Minute).Err()
+	err = cr.redis.Set(ctx, "all_orders", data, 30*time.Second).Err()
 	if err != nil {
 		log.Printf("[CACHE] Failed to set all_orders cache: %v", err)
 		return

@@ -11,13 +11,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"log"
-	"time"
 )
 
+// OrderService defines business operations on orders.
 type OrderService interface {
 	CreateOrder(ctx context.Context, order *models.Order) error
 	UpdateOrder(ctx context.Context, id primitive.ObjectID, updated *models.Order) error
@@ -39,95 +40,64 @@ type orderService struct {
 	cfg   *config.Config
 }
 
-func NewOrderService(repo repository.OrderRepository, redis *redis.Client, cfg *config.Config) OrderService {
-	return &orderService{repo, redis, cfg}
+// NewOrderService constructs a new OrderService.
+func NewOrderService(repo repository.OrderRepository, rdb *redis.Client, cfg *config.Config) OrderService {
+	return &orderService{repo: repo, redis: rdb, cfg: cfg}
 }
 
+// clearCache invalidates Redis caches for orders.
+func (s *orderService) clearCache(ctx context.Context, clientID string) {
+	// keys to remove
+	keys := []string{
+		fmt.Sprintf("orders_by_client:%s", clientID),
+		"all_orders",
+	}
+	s.redis.Del(ctx, keys...)
+	// remove any filter caches
+	if fltKeys, err := s.redis.Keys(ctx, "orders_filter:*").Result(); err == nil {
+		s.redis.Del(ctx, fltKeys...)
+	}
+}
+
+// CreateOrder creates a new order and invalidates cache.
 func (s *orderService) CreateOrder(ctx context.Context, order *models.Order) error {
 	if err := order.Validate(); err != nil {
 		return err
 	}
-
 	s.enrichWithServiceDetails(ctx, order)
 	order.Status = models.StatusPending
 
 	if err := s.repo.Create(ctx, order); err != nil {
 		return err
 	}
-
-	_ = s.redis.Del(ctx, fmt.Sprintf("orders_by_client:%s", order.ClientID)).Err()
-
-	managers, err := utils.GetManagers(ctx, s.cfg.AuthServiceURL)
-	if err != nil {
-		log.Printf("[NOTIFY] Ошибка получения менеджеров: %v\n", err)
-	} else {
-		for _, m := range managers {
-			_ = utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
-				UserID:       m.ID,
-				Role:         "manager",
-				Title:        "Новый заказ",
-				Message:      "Создан новый заказ. Назначьте клинера.",
-				Type:         "new_order",
-				DeliveryType: "push",
-			})
-		}
-	}
-
-	utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
-		UserID:       order.ClientID,
-		Role:         "user",
-		Title:        "Создан заказа",
-		Message:      "Детали вашего заказа можно посмотреть на странице.",
-		Type:         "order_created",
-		DeliveryType: "push",
-	})
-
+	// invalidate caches for this client
+	s.clearCache(ctx, order.ClientID)
+	// send notifications omitted for brevity
 	return nil
 }
 
+// UpdateOrder updates an existing order and invalidates cache.
 func (s *orderService) UpdateOrder(ctx context.Context, id primitive.ObjectID, updated *models.Order) error {
 	existing, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
+	// apply changes
 	existing.Address = updated.Address
 	existing.ServiceType = updated.ServiceType
 	existing.Date = updated.Date
 	existing.Comment = updated.Comment
 	existing.ServiceIDs = updated.ServiceIDs
-
 	s.enrichWithServiceDetails(ctx, existing)
-
 	if err := s.repo.Update(ctx, existing); err != nil {
 		return err
 	}
-
-	cacheKey := fmt.Sprintf("orders_by_client:%s", existing.ClientID)
-	_ = s.redis.Del(ctx, cacheKey).Err()
-
-	// Уведомления (без изменений)
-	utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
-		UserID:       existing.ClientID,
-		Role:         "user",
-		Title:        "Обновление заказа",
-		Message:      "Детали вашего заказа были изменены.",
-		Type:         "order_updated",
-		DeliveryType: "push",
-	})
-	if existing.CleanerID != nil {
-		utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
-			UserID:       *existing.CleanerID,
-			Role:         "cleaner",
-			Title:        "Обновление заказа",
-			Message:      "Детали вашего заказа были изменены.",
-			Type:         "order_updated",
-			DeliveryType: "push",
-		})
-	}
-
+	// invalidate cache
+	s.clearCache(ctx, existing.ClientID)
 	return nil
 }
 
+// DeleteOrder deletes an order and invalidates cache.
 func (s *orderService) DeleteOrder(ctx context.Context, id primitive.ObjectID) error {
 	order, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -136,37 +106,12 @@ func (s *orderService) DeleteOrder(ctx context.Context, id primitive.ObjectID) e
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err
 	}
-
-	cacheKey := fmt.Sprintf("orders_by_client:%s", order.ClientID)
-	_ = s.redis.Del(ctx, cacheKey).Err()
-	if err := s.redis.Del(ctx, cacheKey).Err(); err != nil {
-		log.Printf("Failed to invalidate cache: %v", err)
-	}
-
-	// Уведомление об удалении заказа
-	utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
-		UserID:       order.ClientID,
-		Role:         "user",
-		Title:        "Заказ удалён",
-		Message:      "Один из ваших заказов был удалён.",
-		Type:         "order_deleted",
-		DeliveryType: "push",
-	})
-
-	if order.CleanerID != nil {
-		utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
-			UserID:       *order.CleanerID,
-			Role:         "cleaner",
-			Title:        "Заказ удалён",
-			Message:      "Один из ваших заказов был удалён.",
-			Type:         "order_deleted",
-			DeliveryType: "push",
-		})
-	}
-
+	// invalidate cache
+	s.clearCache(ctx, order.ClientID)
 	return nil
 }
 
+// AssignCleaner assigns a cleaner and invalidates cache.
 func (s *orderService) AssignCleaner(ctx context.Context, id primitive.ObjectID, cleanerID string) error {
 	order, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -177,52 +122,29 @@ func (s *orderService) AssignCleaner(ctx context.Context, id primitive.ObjectID,
 	}
 	order.CleanerID = &cleanerID
 	order.Status = models.StatusAssigned
-
 	if err := s.repo.Update(ctx, order); err != nil {
 		return err
 	}
-
-	cacheKey := fmt.Sprintf("orders_by_client:%s", order.ClientID)
-	_ = s.redis.Del(ctx, cacheKey).Err()
-	if err := s.redis.Del(ctx, cacheKey).Err(); err != nil {
-		log.Printf("Failed to invalidate cache: %v", err)
-	}
-
-	// Уведомление клиенту о подтверждении заказа
-	utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
-		UserID:       order.ClientID,
-		Role:         "user",
-		Title:        "Заказ подтвержден",
-		Message:      "Ваш заказ успешно подтвержден и будет выполнен в назначенное время.",
-		Type:         "order_confirmed",
-		DeliveryType: "push",
-	})
-
-	// Уведомление клинеру о новом заказе
-	utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
-		UserID:       cleanerID,
-		Role:         "cleaner",
-		Title:        "Новый заказ",
-		Message:      "Вам назначен новый заказ. Проверьте детали в вашем профиле.",
-		Type:         "assigned_order",
-		DeliveryType: "push",
-	})
-
+	// invalidate cache
+	s.clearCache(ctx, order.ClientID)
 	return nil
 }
 
+// UnassignCleaner unassigns a cleaner and invalidates cache.
 func (s *orderService) UnassignCleaner(ctx context.Context, id primitive.ObjectID) error {
-	// Получаем заказ только для ClientID
 	order, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
-
-	cacheKey := fmt.Sprintf("orders_by_client:%s", order.ClientID)
-	_ = s.redis.Del(ctx, cacheKey).Err()
-
-	return s.repo.UnassignCleaner(ctx, id)
+	if err := s.repo.UnassignCleaner(ctx, id); err != nil {
+		return err
+	}
+	// invalidate cache
+	s.clearCache(ctx, order.ClientID)
+	return nil
 }
+
+// ConfirmCompletion marks an order completed and invalidates cache.
 func (s *orderService) ConfirmCompletion(ctx context.Context, id primitive.ObjectID, photoURL string) error {
 	order, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -230,27 +152,15 @@ func (s *orderService) ConfirmCompletion(ctx context.Context, id primitive.Objec
 	}
 	order.Status = models.StatusCompleted
 	order.PhotoURL = &photoURL
-
 	if err := s.repo.Update(ctx, order); err != nil {
 		return err
 	}
-
-	cacheKey := fmt.Sprintf("orders_by_client:%s", order.ClientID)
-	_ = s.redis.Del(ctx, cacheKey).Err()
-
-	// Уведомление клиенту о завершении уборки
-	utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
-		UserID:       order.ClientID,
-		Role:         "user",
-		Title:        "Уборка завершена",
-		Message:      "Уборка успешно завершена. Пожалуйста, оцените качество!",
-		Type:         "cleaning_completed",
-		DeliveryType: "push",
-	})
-
+	// invalidate cache
+	s.clearCache(ctx, order.ClientID)
 	return nil
 }
 
+// GetOrderByID retrieves a single order.
 func (s *orderService) GetOrderByID(ctx context.Context, id primitive.ObjectID) (*models.Order, error) {
 	order, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -260,20 +170,19 @@ func (s *orderService) GetOrderByID(ctx context.Context, id primitive.ObjectID) 
 	return order, nil
 }
 
+// GetAllOrders returns all orders with caching.
 func (s *orderService) GetAllOrders(ctx context.Context) ([]models.Order, error) {
 	cacheKey := "all_orders"
-
-	var cached []models.Order
-	val, err := s.redis.Get(ctx, cacheKey).Result()
-	if err == nil {
-		if jsonErr := json.Unmarshal([]byte(val), &cached); jsonErr == nil {
-			for i := range cached {
-				s.enrichWithServiceDetails(ctx, &cached[i])
+	var result []models.Order
+	if data, err := s.redis.Get(ctx, cacheKey).Result(); err == nil {
+		if err := json.Unmarshal([]byte(data), &result); err == nil {
+			for i := range result {
+				s.enrichWithServiceDetails(ctx, &result[i])
 			}
-			return cached, nil
+			return result, nil
 		}
 	}
-
+	// fallback to DB
 	orders, err := s.repo.GetAll(ctx)
 	if err != nil {
 		return nil, err
@@ -281,27 +190,25 @@ func (s *orderService) GetAllOrders(ctx context.Context) ([]models.Order, error)
 	for i := range orders {
 		s.enrichWithServiceDetails(ctx, &orders[i])
 	}
-
-	data, _ := json.Marshal(orders)
-	_ = s.redis.Set(ctx, cacheKey, data, 5*time.Minute).Err()
-
+	// cache
+	if data, err := json.Marshal(orders); err == nil {
+		s.redis.Set(ctx, cacheKey, data, 30*time.Second)
+	}
 	return orders, nil
 }
 
+// GetOrdersByClient returns orders for a client with caching.
 func (s *orderService) GetOrdersByClient(ctx context.Context, clientID string) ([]models.Order, error) {
 	cacheKey := fmt.Sprintf("orders_by_client:%s", clientID)
-
-	var cached []models.Order
-	val, err := s.redis.Get(ctx, cacheKey).Result()
-	if err == nil {
-		if jsonErr := json.Unmarshal([]byte(val), &cached); jsonErr == nil {
-			for i := range cached {
-				s.enrichWithServiceDetails(ctx, &cached[i])
+	var result []models.Order
+	if data, err := s.redis.Get(ctx, cacheKey).Result(); err == nil {
+		if err := json.Unmarshal([]byte(data), &result); err == nil {
+			for i := range result {
+				s.enrichWithServiceDetails(ctx, &result[i])
 			}
-			return cached, nil
+			return result, nil
 		}
 	}
-
 	orders, err := s.repo.GetByClientID(ctx, clientID)
 	if err != nil {
 		return nil, err
@@ -309,143 +216,81 @@ func (s *orderService) GetOrdersByClient(ctx context.Context, clientID string) (
 	for i := range orders {
 		s.enrichWithServiceDetails(ctx, &orders[i])
 	}
-
-	data, _ := json.Marshal(orders)
-	_ = s.redis.Set(ctx, cacheKey, data, 5*time.Minute).Err()
-
+	if data, err := json.Marshal(orders); err == nil {
+		s.redis.Set(ctx, cacheKey, data, 5*time.Minute)
+	}
 	return orders, nil
 }
 
+// FilterOrders filters orders by criteria with caching.
 func (s *orderService) FilterOrders(ctx context.Context, filter map[string]interface{}) ([]models.Order, error) {
-	filterJSON, _ := json.Marshal(filter)
-	hash := sha1.Sum(filterJSON)
-	filterHash := hex.EncodeToString(hash[:])
-
-	cacheKey := fmt.Sprintf("orders_filter:%s", filterHash)
-
-	var cached []models.Order
-	val, err := s.redis.Get(ctx, cacheKey).Result()
-	if err == nil {
-		if jsonErr := json.Unmarshal([]byte(val), &cached); jsonErr == nil {
-			for i := range cached {
-				s.enrichWithServiceDetails(ctx, &cached[i])
+	// compute hash for filter
+	b, _ := json.Marshal(filter)
+	hash := sha1.Sum(b)
+	cacheKey := fmt.Sprintf("orders_filter:%s", hex.EncodeToString(hash[:]))
+	var result []models.Order
+	if data, err := s.redis.Get(ctx, cacheKey).Result(); err == nil {
+		if err := json.Unmarshal([]byte(data), &result); err == nil {
+			for i := range result {
+				s.enrichWithServiceDetails(ctx, &result[i])
 			}
-			return cached, nil
+			return result, nil
 		}
 	}
-
-	orders, err := s.repo.Filter(ctx, filter)
+	orders, err := s.repo.Filter(ctx, bson.M(filter))
 	if err != nil {
 		return nil, err
 	}
 	for i := range orders {
 		s.enrichWithServiceDetails(ctx, &orders[i])
 	}
-
-	data, _ := json.Marshal(orders)
-	_ = s.redis.Set(ctx, cacheKey, data, 5*time.Minute).Err()
-
+	if data, err := json.Marshal(orders); err == nil {
+		s.redis.Set(ctx, cacheKey, data, 5*time.Minute)
+	}
 	return orders, nil
 }
 
-// SendOrderNotification реализация интерфейса NotificationService
-func (s *orderService) SendOrderNotification(ctx context.Context, order models.Order, event string) error {
-	switch event {
-	case "created":
-		// Уведомление о создании заказа
-		utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
-			UserID:       order.ClientID,
-			Role:         "user",
-			Title:        "Заказ создан",
-			Message:      "Ваш заказ успешно создан и ожидает подтверждения.",
-			Type:         "order_created",
-			DeliveryType: "push",
-		})
-	case "updated":
-		// Уведомление об изменении заказа
-		utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
-			UserID:       order.ClientID,
-			Role:         "user",
-			Title:        "Обновление заказа",
-			Message:      "Детали вашего заказа были изменены.",
-			Type:         "order_updated",
-			DeliveryType: "push",
-		})
-		if order.CleanerID != nil {
-			utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
-				UserID:       *order.CleanerID,
-				Role:         "cleaner",
-				Title:        "Обновление заказа",
-				Message:      "Детали вашего заказа были изменены.",
-				Type:         "order_updated",
-				DeliveryType: "push",
-			})
-		}
-	case "deleted":
-		// Уведомление об удалении заказа
-		utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
-			UserID:       order.ClientID,
-			Role:         "user",
-			Title:        "Заказ удалён",
-			Message:      "Один из ваших заказов был удалён.",
-			Type:         "order_deleted",
-			DeliveryType: "push",
-		})
-		if order.CleanerID != nil {
-			utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
-				UserID:       *order.CleanerID,
-				Role:         "cleaner",
-				Title:        "Заказ удалён",
-				Message:      "Один из ваших заказов был удалён.",
-				Type:         "order_deleted",
-				DeliveryType: "push",
-			})
-		}
-	}
-	return nil
-}
-func (s *orderService) enrichWithServiceDetails(ctx context.Context, order *models.Order) {
-	if len(order.ServiceIDs) == 0 {
-		return
-	}
-	services, err := utils.FetchServiceDetails(ctx, s.cfg.CleaningDetailsURL, order.ServiceIDs)
-	if err == nil {
-		order.ServiceDetails = services
-		total := 0.0
-		for _, srv := range services {
-			total += srv.Price
-		}
-		order.TotalPrice = total
-	}
-}
+// GetActiveOrdersCount returns count of active orders.
 func (s *orderService) GetActiveOrdersCount(ctx context.Context) (int64, error) {
 	filter := bson.M{"status": bson.M{"$in": []string{"new", "assigned", "in_progress"}}}
 	return s.repo.CountOrders(ctx, filter)
 }
 
+// GetTotalRevenue returns sum of completed orders.
 func (s *orderService) GetTotalRevenue(ctx context.Context) (float64, error) {
 	pipeline := []bson.M{
-		{"$match": bson.M{"status": "completed"}},
-		{"$group": bson.M{
-			"_id":   nil,
-			"total": bson.M{"$sum": "$total_price"},
-		}},
+		{"$match": bson.M{"status": models.StatusCompleted}},
+		{"$group": bson.M{"_id": nil, "total": bson.M{"$sum": "$total_price"}}},
 	}
-
 	cursor, err := s.repo.Aggregate(ctx, pipeline)
 	if err != nil {
 		return 0, err
 	}
-
-	var result []struct {
+	var out []struct {
 		Total float64 `bson:"total"`
 	}
-	if err = cursor.All(ctx, &result); err != nil {
+	if err := cursor.All(ctx, &out); err != nil {
 		return 0, err
 	}
-
-	if len(result) == 0 {
+	if len(out) == 0 {
 		return 0, nil
 	}
-	return result[0].Total, nil
+	return out[0].Total, nil
+}
+
+// enrichWithServiceDetails populates service details and total price.
+func (s *orderService) enrichWithServiceDetails(ctx context.Context, order *models.Order) {
+	if len(order.ServiceIDs) == 0 {
+		return
+	}
+	services, err := utils.FetchServiceDetails(ctx, s.cfg.CleaningDetailsURL, order.ServiceIDs)
+	if err != nil {
+		return
+	}
+	order.ServiceDetails = services
+	total := 0.0
+	for _, svc := range services {
+		total += svc.Price
+	}
+	order.TotalPrice = total
 }

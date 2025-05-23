@@ -58,7 +58,7 @@ func main() {
 	orderRepo := repository.NewOrderRepository(db)
 	orderService := services.NewOrderService(orderRepo, rdb, cfg)
 
-	orderHandler := handler.NewOrderHandler(orderService)
+	orderHandler := handler.NewOrderHandler(orderService, rdb)
 
 	// 5. Старт фонового кэш-рефрешера
 	cacheRefresher := services.NewCacheRefresher(orderService, rdb)

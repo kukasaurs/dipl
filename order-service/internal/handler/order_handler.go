@@ -3,17 +3,30 @@ package handler
 import (
 	"cleaning-app/order-service/internal/models"
 	"cleaning-app/order-service/internal/services"
-	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"context"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type OrderHandler struct {
 	service services.OrderService
+	rdb     *redis.Client
 }
 
-func NewOrderHandler(service services.OrderService) *OrderHandler {
-	return &OrderHandler{service: service}
+// NewOrderHandler creates a new OrderHandler with given service and Redis client.
+func NewOrderHandler(service services.OrderService, rdb *redis.Client) *OrderHandler {
+	return &OrderHandler{service: service, rdb: rdb}
+}
+
+// clearCache invalidates relevant Redis keys after data changes.
+func (h *OrderHandler) clearCache(ctx context.Context) {
+	// adjust keys as per your caching strategy
+	h.rdb.Del(ctx, "orders:activeCount")
+	h.rdb.Del(ctx, "orders:totalRevenue")
+	h.rdb.Del(ctx, "orders:all")
 }
 
 func (h *OrderHandler) CreateOrder(c *gin.Context) {
@@ -28,6 +41,8 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	// invalidate cache
+	h.clearCache(c.Request.Context())
 	c.JSON(http.StatusCreated, order)
 }
 
@@ -56,6 +71,8 @@ func (h *OrderHandler) UpdateOrder(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	// invalidate cache
+	h.clearCache(c.Request.Context())
 	c.JSON(http.StatusOK, gin.H{"message": "Order updated"})
 }
 
@@ -69,6 +86,8 @@ func (h *OrderHandler) DeleteOrder(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	// invalidate cache
+	h.clearCache(c.Request.Context())
 	c.JSON(http.StatusOK, gin.H{"message": "Order deleted"})
 }
 
@@ -89,6 +108,8 @@ func (h *OrderHandler) AssignCleaner(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	// invalidate cache
+	h.clearCache(c.Request.Context())
 	c.JSON(http.StatusOK, gin.H{"message": "Cleaner assigned"})
 }
 
@@ -102,6 +123,8 @@ func (h *OrderHandler) UnassignCleaner(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	// invalidate cache
+	h.clearCache(c.Request.Context())
 	c.JSON(http.StatusOK, gin.H{"message": "Cleaner unassigned"})
 }
 
@@ -122,6 +145,8 @@ func (h *OrderHandler) ConfirmCompletion(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	// invalidate cache
+	h.clearCache(c.Request.Context())
 	c.JSON(http.StatusOK, gin.H{"message": "Order marked as completed"})
 }
 
