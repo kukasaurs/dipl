@@ -87,6 +87,8 @@ func main() {
 			protected.PUT("/:id/unassign", orderHandler.UnassignCleaner)
 			protected.GET("/all", orderHandler.GetAllOrders)
 			protected.GET("/filter", orderHandler.FilterOrders)
+			protected.GET("/stats", orderHandler.GetActiveOrdersCount)
+			protected.GET("/total-revenue", orderHandler.GetTotalRevenue)
 		}
 
 		protectedCleaner := orders.Group("/")

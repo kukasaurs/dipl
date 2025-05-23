@@ -18,6 +18,8 @@ type OrderRepository interface {
 	GetAll(ctx context.Context) ([]models.Order, error)
 	Filter(ctx context.Context, filter bson.M) ([]models.Order, error)
 	UnassignCleaner(ctx context.Context, id primitive.ObjectID) error
+	CountOrders(ctx context.Context, filter interface{}) (int64, error)
+	Aggregate(ctx context.Context, pipeline []bson.M) (*mongo.Cursor, error)
 }
 
 type orderRepository struct {
@@ -92,4 +94,11 @@ func (r *orderRepository) UnassignCleaner(ctx context.Context, id primitive.Obje
 	}
 	_, err := r.collection.UpdateByID(ctx, id, update)
 	return err
+}
+func (r *orderRepository) CountOrders(ctx context.Context, filter interface{}) (int64, error) {
+	return r.collection.CountDocuments(ctx, filter)
+}
+
+func (r *orderRepository) Aggregate(ctx context.Context, pipeline []bson.M) (*mongo.Cursor, error) {
+	return r.collection.Aggregate(ctx, pipeline)
 }

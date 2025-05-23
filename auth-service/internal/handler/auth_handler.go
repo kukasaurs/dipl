@@ -236,3 +236,13 @@ func (h *AuthHandler) GetManagers(c *gin.Context) {
 	}
 	c.JSON(200, managers)
 }
+
+func (h *AuthHandler) GetTotalUsers(c *gin.Context) {
+	count, err := h.authService.GetTotalUsers(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user count"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"totalUsers": count})
+}

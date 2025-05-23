@@ -254,3 +254,7 @@ func (s *AuthService) Logout(tokenString string) error {
 func (s *AuthService) GetByRole(role string) ([]*models.User, error) {
 	return s.userRepo.GetByRole(role)
 }
+
+func (s *AuthService) GetTotalUsers(ctx context.Context) (int64, error) {
+	return s.userRepo.CountUsers(ctx)
+}
