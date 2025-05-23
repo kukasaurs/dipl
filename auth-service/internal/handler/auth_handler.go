@@ -235,36 +235,3 @@ func (h *AuthHandler) GetTotalUsers(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"totalUsers": count})
 }
-func (h *AuthHandler) AddRating(c *gin.Context) {
-	userIDStr, _ := c.Get("user_id")
-	userID, _ := primitive.ObjectIDFromHex(userIDStr.(string))
-
-	var req struct {
-		Rating int `json:"rating" binding:"required,min=1,max=5"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid rating"})
-		return
-	}
-
-	if err := h.authService.AddRating(userID, req.Rating); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Rating added successfully"})
-}
-
-func (h *AuthHandler) GetRating(c *gin.Context) {
-	userIDStr, _ := c.Get("user_id")
-	userID, _ := primitive.ObjectIDFromHex(userIDStr.(string))
-
-	rating, err := h.authService.GetRating(userID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"rating": rating})
-}
