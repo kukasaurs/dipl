@@ -47,20 +47,15 @@ func (s *orderService) CreateOrder(ctx context.Context, order *models.Order) err
 	if err := order.Validate(); err != nil {
 		return err
 	}
-	services, err := utils.FetchServiceDetails(ctx, s.cfg.CleaningDetailsURL, order.ServiceIDs)
-	if err != nil {
-		return fmt.Errorf("failed to fetch services: %w", err)
-	}
-	order.ServiceDetails = services
 
+	s.enrichWithServiceDetails(ctx, order)
 	order.Status = models.StatusPending
+
 	if err := s.repo.Create(ctx, order); err != nil {
 		return err
 	}
+
 	_ = s.redis.Del(ctx, fmt.Sprintf("orders_by_client:%s", order.ClientID)).Err()
-	if err := s.redis.Del(ctx, fmt.Sprintf("orders_by_client:%s", order.ClientID)).Err(); err != nil {
-		log.Printf("Failed to invalidate cache: %v", err)
-	}
 
 	managers, err := utils.GetManagers(ctx, s.cfg.AuthServiceURL)
 	if err != nil {
@@ -101,7 +96,6 @@ func (s *orderService) UpdateOrder(ctx context.Context, id primitive.ObjectID, u
 	existing.Comment = updated.Comment
 	existing.ServiceIDs = updated.ServiceIDs
 
-	// 🔄 Получаем актуальные данные об услугах
 	s.enrichWithServiceDetails(ctx, existing)
 
 	if err := s.repo.Update(ctx, existing); err != nil {
@@ -417,9 +411,13 @@ func (s *orderService) enrichWithServiceDetails(ctx context.Context, order *mode
 	services, err := utils.FetchServiceDetails(ctx, s.cfg.CleaningDetailsURL, order.ServiceIDs)
 	if err == nil {
 		order.ServiceDetails = services
+		total := 0.0
+		for _, srv := range services {
+			total += srv.Price
+		}
+		order.TotalPrice = total
 	}
 }
-
 func (s *orderService) GetActiveOrdersCount(ctx context.Context) (int64, error) {
 	filter := bson.M{"status": bson.M{"$in": []string{"new", "assigned", "in_progress"}}}
 	return s.repo.CountOrders(ctx, filter)
@@ -430,7 +428,7 @@ func (s *orderService) GetTotalRevenue(ctx context.Context) (float64, error) {
 		{"$match": bson.M{"status": "completed"}},
 		{"$group": bson.M{
 			"_id":   nil,
-			"total": bson.M{"$sum": "$price"},
+			"total": bson.M{"$sum": "$total_price"},
 		}},
 	}
 
