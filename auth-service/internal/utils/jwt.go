@@ -19,7 +19,7 @@ func NewJWTUtil(secret string) *JWTUtil {
 	return &JWTUtil{secret: secret}
 }
 
-func (j *JWTUtil) GenerateToken(userID, role string, banned bool, resetRequired bool) (string, error) {
+func (j *JWTUtil) GenerateToken(userID, role string, banned bool, resetRequired bool, averageRating float64) (string, error) {
 	expirationTime := time.Now().Add(200 * time.Hour)
 	claims := jwt.MapClaims{
 		"user_id":        userID,
@@ -28,12 +28,12 @@ func (j *JWTUtil) GenerateToken(userID, role string, banned bool, resetRequired 
 		"reset_required": resetRequired,
 		"exp":            expirationTime.Unix(),
 		"iat":            time.Now().Unix(),
+		"average_rating": averageRating,
 		"jti":            GenerateCode(10), // Добавляем уникальный идентификатор токена
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(j.secret))
 }
-
 
 func (j *JWTUtil) ValidateToken(tokenString string) (*jwt.Token, error) {
 	return jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {

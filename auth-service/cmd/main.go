@@ -96,7 +96,10 @@ func main() {
 			protected.PUT("/profile", authHandler.UpdateProfile)
 			protected.PUT("/change-password", authHandler.ChangePassword)
 			protected.PUT("/set-initial-password", authHandler.SetInitialPassword)
+
 			protected.GET("/total-users", authHandler.GetTotalUsers)
+			protected.POST("/add-rating", authHandler.AddRating)
+			protected.GET("/rating", authHandler.GetRating)
 		}
 	}
 
