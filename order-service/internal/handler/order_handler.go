@@ -152,3 +152,21 @@ func (h *OrderHandler) FilterOrders(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, orders)
 }
+
+func (h *OrderHandler) GetActiveOrdersCount(c *gin.Context) {
+	count, err := h.service.GetActiveOrdersCount(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"count": count})
+}
+
+func (h *OrderHandler) GetTotalRevenue(c *gin.Context) {
+	revenue, err := h.service.GetTotalRevenue(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"revenue": revenue})
+}

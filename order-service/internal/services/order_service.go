@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"log"
 	"time"
@@ -28,6 +29,8 @@ type OrderService interface {
 	GetAllOrders(ctx context.Context) ([]models.Order, error)
 	GetOrdersByClient(ctx context.Context, clientID string) ([]models.Order, error)
 	FilterOrders(ctx context.Context, filter map[string]interface{}) ([]models.Order, error)
+	GetActiveOrdersCount(ctx context.Context) (int64, error)
+	GetTotalRevenue(ctx context.Context) (float64, error)
 }
 
 type orderService struct {
@@ -415,4 +418,36 @@ func (s *orderService) enrichWithServiceDetails(ctx context.Context, order *mode
 	if err == nil {
 		order.ServiceDetails = services
 	}
+}
+
+func (s *orderService) GetActiveOrdersCount(ctx context.Context) (int64, error) {
+	filter := bson.M{"status": bson.M{"$in": []string{"new", "assigned", "in_progress"}}}
+	return s.repo.CountOrders(ctx, filter)
+}
+
+func (s *orderService) GetTotalRevenue(ctx context.Context) (float64, error) {
+	pipeline := []bson.M{
+		{"$match": bson.M{"status": "completed"}},
+		{"$group": bson.M{
+			"_id":   nil,
+			"total": bson.M{"$sum": "$price"},
+		}},
+	}
+
+	cursor, err := s.repo.Aggregate(ctx, pipeline)
+	if err != nil {
+		return 0, err
+	}
+
+	var result []struct {
+		Total float64 `bson:"total"`
+	}
+	if err = cursor.All(ctx, &result); err != nil {
+		return 0, err
+	}
+
+	if len(result) == 0 {
+		return 0, nil
+	}
+	return result[0].Total, nil
 }

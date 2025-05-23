@@ -268,6 +268,11 @@ func (s *AuthService) Logout(tokenString string) error {
 func (s *AuthService) GetByRole(role string) ([]*models.User, error) {
 	return s.userRepo.GetByRole(role)
 }
+
+func (s *AuthService) GetTotalUsers(ctx context.Context) (int64, error) {
+	return s.userRepo.CountUsers(ctx)
+}
+
 func (s *AuthService) AddRating(userID primitive.ObjectID, rating int) error {
 	if rating < 1 || rating > 5 {
 		return errors.New("rating must be between 1 and 5")
@@ -277,4 +282,5 @@ func (s *AuthService) AddRating(userID primitive.ObjectID, rating int) error {
 
 func (s *AuthService) GetRating(userID primitive.ObjectID) (float64, error) {
 	return s.userRepo.GetRating(userID)
+
 }

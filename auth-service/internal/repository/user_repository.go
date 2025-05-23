@@ -126,6 +126,14 @@ func (r *UserRepository) GetByRole(role string) ([]*models.User, error) {
 	return users, nil
 }
 
+func (r *UserRepository) CountUsers(ctx context.Context) (int64, error) {
+	count, err := r.collection.CountDocuments(ctx, bson.M{})
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (r *UserRepository) GetRating(userID primitive.ObjectID) (float64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
