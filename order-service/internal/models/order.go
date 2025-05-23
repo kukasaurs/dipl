@@ -30,6 +30,7 @@ type Order struct {
 	Comment        string             `bson:"comment,omitempty" json:"comment,omitempty"`
 	CreatedAt      time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt      time.Time          `bson:"updated_at" json:"updated_at"`
+	TotalPrice     float64            `bson:"total_price" json:"total_price"`
 }
 
 type Service struct {
