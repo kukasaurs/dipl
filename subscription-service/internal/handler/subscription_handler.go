@@ -31,7 +31,6 @@ func (h *SubscriptionHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// 💳 оплату вызываем отдельно
 	if err := h.service.InitPayment(c.Request.Context(), sub); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "payment failed"})
 		return

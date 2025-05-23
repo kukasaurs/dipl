@@ -36,6 +36,7 @@ func (s *AuthService) GoogleLogin(idToken string) (string, error) {
 			Role:          "user",
 			Banned:        false,
 			ResetRequired: false,
+			AverageRating: 0,
 		}
 
 		user, err = s.userRepo.CreateUser(user)
@@ -43,5 +44,5 @@ func (s *AuthService) GoogleLogin(idToken string) (string, error) {
 			return "", err
 		}
 	}
-	return s.jwtUtil.GenerateToken(user.ID.Hex(), user.Role, false, user.ResetRequired)
+	return s.jwtUtil.GenerateToken(user.ID.Hex(), user.Role, false, user.ResetRequired, user.AverageRating)
 }

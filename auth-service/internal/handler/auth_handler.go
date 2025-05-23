@@ -3,7 +3,6 @@ package handlers
 import (
 	"cleaning-app/auth-service/internal/models"
 	"cleaning-app/auth-service/internal/services"
-	"cleaning-app/auth-service/internal/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -87,32 +86,22 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 		return
 	}
+
 	var req struct {
-		FirstName   string    `json:"first_name"`
-		LastName    string    `json:"last_name"`
-		Address     string    `json:"address"`
-		PhoneNumber string    `json:"phone_number"`
-		DateOfBirth time.Time `json:"date_of_birth"`
-		Gender      string    `json:"gender"`
+		FirstName   *string    `json:"first_name"`
+		LastName    *string    `json:"last_name"`
+		Address     *string    `json:"address"`
+		PhoneNumber *string    `json:"phone_number"`
+		DateOfBirth *time.Time `json:"date_of_birth"`
+		Gender      *string    `json:"gender"`
 	}
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	if err := utils.ValidateStruct(req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Validation error", "details": err.Error()})
-		return
-	}
-	updateUser := &models.User{
-		ID:          userID,
-		FirstName:   req.FirstName,
-		LastName:    req.LastName,
-		Address:     req.Address,
-		PhoneNumber: req.PhoneNumber,
-		DateOfBirth: req.DateOfBirth,
-		Gender:      req.Gender,
-	}
-	if err := h.authService.UpdateProfile(updateUser); err != nil {
+
+	if err := h.authService.UpdateProfile(userID, req); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -235,4 +224,37 @@ func (h *AuthHandler) GetManagers(c *gin.Context) {
 		return
 	}
 	c.JSON(200, managers)
+}
+func (h *AuthHandler) AddRating(c *gin.Context) {
+	userIDStr, _ := c.Get("user_id")
+	userID, _ := primitive.ObjectIDFromHex(userIDStr.(string))
+
+	var req struct {
+		Rating int `json:"rating" binding:"required,min=1,max=5"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid rating"})
+		return
+	}
+
+	if err := h.authService.AddRating(userID, req.Rating); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Rating added successfully"})
+}
+
+func (h *AuthHandler) GetRating(c *gin.Context) {
+	userIDStr, _ := c.Get("user_id")
+	userID, _ := primitive.ObjectIDFromHex(userIDStr.(string))
+
+	rating, err := h.authService.GetRating(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"rating": rating})
 }

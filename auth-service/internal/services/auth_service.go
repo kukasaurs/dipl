@@ -9,9 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/golang-jwt/jwt/v4"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
 	"log"
+	"reflect"
 	"time"
 )
 
@@ -71,7 +73,7 @@ func (s *AuthService) Register(user *models.User) (string, error) {
 		DeliveryType: "push",
 	})
 
-	return s.jwtUtil.GenerateToken(createdUser.ID.Hex(), createdUser.Role, false, createdUser.ResetRequired)
+	return s.jwtUtil.GenerateToken(createdUser.ID.Hex(), createdUser.Role, false, createdUser.ResetRequired, 0)
 }
 
 func (s *AuthService) Login(email, password string) (string, error) {
@@ -92,7 +94,7 @@ func (s *AuthService) Login(email, password string) (string, error) {
 		return "", errors.New("invalid credentials")
 	}
 
-	return s.jwtUtil.GenerateToken(user.ID.Hex(), user.Role, false, user.ResetRequired)
+	return s.jwtUtil.GenerateToken(user.ID.Hex(), user.Role, false, user.ResetRequired, user.AverageRating)
 }
 
 func (s *AuthService) GetProfile(userID primitive.ObjectID) (*models.User, error) {
@@ -122,24 +124,36 @@ func (s *AuthService) GetProfile(userID primitive.ObjectID) (*models.User, error
 	return user, nil
 }
 
-func (s *AuthService) UpdateProfile(user *models.User) error {
-	existingUser, err := s.userRepo.GetUserByID(user.ID)
-	if err != nil {
-		return errors.New("user not found")
+func (s *AuthService) UpdateProfile(userID primitive.ObjectID, req interface{}) error {
+	updateFields := bson.M{}
+
+	if r, ok := req.(map[string]interface{}); ok {
+		for k, v := range r {
+			if v != nil {
+				updateFields[k] = v
+			}
+		}
+	} else {
+		val := reflect.ValueOf(req)
+		typ := reflect.TypeOf(req)
+		for i := 0; i < val.NumField(); i++ {
+			field := val.Field(i)
+			if !field.IsNil() {
+				jsonTag := typ.Field(i).Tag.Get("json")
+				updateFields[jsonTag] = field.Elem().Interface()
+			}
+		}
 	}
 
-	existingUser.FirstName = user.FirstName
-	existingUser.LastName = user.LastName
-	existingUser.Address = user.Address
-	existingUser.PhoneNumber = user.PhoneNumber
-	existingUser.DateOfBirth = user.DateOfBirth
-	existingUser.Gender = user.Gender
+	if len(updateFields) == 0 {
+		return nil // Нечего обновлять
+	}
 
-	if err := s.userRepo.UpdateUser(existingUser); err != nil {
+	if err := s.userRepo.UpdateUserFields(userID, updateFields); err != nil {
 		return err
 	}
 
-	cacheKey := fmt.Sprintf("user_profile:%s", user.ID.Hex())
+	cacheKey := fmt.Sprintf("user_profile:%s", userID.Hex())
 	_ = s.redis.Delete(context.Background(), cacheKey)
 
 	return nil
@@ -253,4 +267,14 @@ func (s *AuthService) Logout(tokenString string) error {
 
 func (s *AuthService) GetByRole(role string) ([]*models.User, error) {
 	return s.userRepo.GetByRole(role)
+}
+func (s *AuthService) AddRating(userID primitive.ObjectID, rating int) error {
+	if rating < 1 || rating > 5 {
+		return errors.New("rating must be between 1 and 5")
+	}
+	return s.userRepo.AddRating(userID, rating)
+}
+
+func (s *AuthService) GetRating(userID primitive.ObjectID) (float64, error) {
+	return s.userRepo.GetRating(userID)
 }
