@@ -21,11 +21,18 @@ func ConfigureServiceProxies(router *gin.RouterGroup) {
 		{"/users", "http://user-management-service:8006", "/api/users", "/users"},
 	}
 
-	for _, service := range services {
-		router.Any(service.path+"/*proxyPath", proxy.CreateProxy(
-			service.target,
-			service.stripPrefix,
-			service.addPrefix,
+	for _, svc := range services {
+		// Проксируем и /support
+		router.Any(svc.path, proxy.CreateProxy(
+			svc.target,
+			svc.stripPrefix,
+			svc.addPrefix,
+		))
+		// и всё что ниже /support/…
+		router.Any(svc.path+"/*proxyPath", proxy.CreateProxy(
+			svc.target,
+			svc.stripPrefix,
+			svc.addPrefix,
 		))
 	}
 }

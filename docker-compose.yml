@@ -95,6 +95,7 @@ services:
     environment:
       - JWT_SECRET=jani-secret
       - AUTH_SERVICE_URL=http://auth-service:8000
+      - ORDER_SERVICE_URL=http://order-service:8001
     env_file:
       - .env.docker
     depends_on:
@@ -132,6 +133,8 @@ services:
       - JWT_SECRET=jani-secret
       - AUTH_SERVICE_URL=http://auth-service:8000
       - NOTIFICATION_SERVICE_URL=http://notification-service:8002
+      - USER_SERVICE_URL=http://user-management-service:8006
+
     env_file:
       - .env.docker
     depends_on:

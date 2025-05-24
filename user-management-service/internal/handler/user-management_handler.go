@@ -136,3 +136,27 @@ func (h *UserHandler) UnblockUser(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "user unblocked"})
 }
+
+func (h *UserHandler) GetUserByID(c *gin.Context) {
+	// 1) Парсим hex → ObjectID
+	hexID := c.Param("id")
+	objID, err := primitive.ObjectIDFromHex(hexID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
+		return
+	}
+
+	// 2) Вызываем сервис
+	user, err := h.service.GetUserByID(c.Request.Context(), objID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	// 3) Отдаём нужные поля
+	c.JSON(http.StatusOK, gin.H{
+		"id":    user.ID.Hex(),
+		"email": user.Email,
+		"role":  user.Role,
+	})
+}

@@ -52,6 +52,8 @@ func main() {
 	{
 		api.GET("/me", userHandler.GetMe)
 
+		api.GET("/:id", userHandler.GetUserByID)
+
 		managerGroup := api.Group("/")
 		managerGroup.Use(utils.RequireRoles("admin", "manager"))
 		{

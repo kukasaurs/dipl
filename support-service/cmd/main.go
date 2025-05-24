@@ -39,7 +39,7 @@ func main() {
 	notifier := utils.NewNotificationClient(cfg.NotificationServiceURL)
 
 	supportService := services.NewSupportService(repo, notifier)
-	supportHandler := handler.NewSupportHandler(supportService)
+	supportHandler := handler.NewSupportHandler(supportService, cfg.UserServiceURL)
 
 	router := gin.Default()
 	authMW := utils.AuthMiddleware(cfg.AuthServiceURL)
@@ -47,8 +47,7 @@ func main() {
 	api := router.Group("/support", authMW)
 	{
 		api.POST("/tickets", supportHandler.CreateTicket)
-		api.GET("/tickets/my", supportHandler.GetMyTickets)
-		api.GET("/tickets", supportHandler.GetAllTickets)
+		api.GET("/tickets", supportHandler.GetTickets)
 		api.PUT("/tickets/:id/status", supportHandler.UpdateTicketStatus)
 		api.POST("/tickets/:id/messages", supportHandler.SendMessage)
 		api.GET("/tickets/:id/messages", supportHandler.GetMessages)

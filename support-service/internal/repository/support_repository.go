@@ -1,92 +1,136 @@
 package repository
 
 import (
-	"cleaning-app/support-service/internal/models"
 	"context"
 	"time"
+
+	"cleaning-app/support-service/internal/models"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-type SupportRepository struct {
+// SupportRepository описывает все операции над тикетами и сообщениями
+type SupportRepository interface {
+	CreateTicket(ctx context.Context, ticket *models.Ticket) error
+
+	GetTicketByID(ctx context.Context, id primitive.ObjectID) (*models.Ticket, error)
+	GetTicketsByClient(ctx context.Context, clientID string) ([]models.Ticket, error)
+	GetAllTickets(ctx context.Context) ([]models.Ticket, error)
+
+	GetTicketsByClientAndStatus(ctx context.Context, clientID string, status models.TicketStatus) ([]models.Ticket, error)
+	GetTicketsByStatus(ctx context.Context, status models.TicketStatus) ([]models.Ticket, error)
+
+	UpdateTicketStatus(ctx context.Context, ticketID primitive.ObjectID, status models.TicketStatus) error
+
+	AddMessage(ctx context.Context, msg *models.Message) error
+	GetMessagesByTicket(ctx context.Context, ticketID primitive.ObjectID) ([]models.Message, error)
+}
+
+type supportRepository struct {
 	ticketsCol  *mongo.Collection
 	messagesCol *mongo.Collection
 }
 
-func NewSupportRepository(db *mongo.Database) *SupportRepository {
-	return &SupportRepository{
-		ticketsCol:  db.Collection("support_tickets"),
-		messagesCol: db.Collection("support_messages"),
+// NewSupportRepository создаёт новый репозиторий
+func NewSupportRepository(db *mongo.Database) SupportRepository {
+	return &supportRepository{
+		ticketsCol:  db.Collection("tickets"),
+		messagesCol: db.Collection("messages"),
 	}
 }
 
-// Ticket CRUD
-
-func (r *SupportRepository) CreateTicket(ctx context.Context, ticket *models.Ticket) error {
+func (r *supportRepository) CreateTicket(ctx context.Context, ticket *models.Ticket) error {
 	ticket.ID = primitive.NewObjectID()
-	ticket.Status = models.StatusOpen
-	ticket.CreatedAt = time.Now()
-	ticket.UpdatedAt = time.Now()
+	ticket.CreatedAt = time.Now().UTC()
+	ticket.UpdatedAt = ticket.CreatedAt
 	_, err := r.ticketsCol.InsertOne(ctx, ticket)
 	return err
 }
 
-func (r *SupportRepository) GetTicketByID(ctx context.Context, id primitive.ObjectID) (*models.Ticket, error) {
-	var ticket models.Ticket
-	err := r.ticketsCol.FindOne(ctx, bson.M{"_id": id}).Decode(&ticket)
-	if err != nil {
+func (r *supportRepository) GetTicketByID(ctx context.Context, id primitive.ObjectID) (*models.Ticket, error) {
+	var t models.Ticket
+	if err := r.ticketsCol.FindOne(ctx, bson.M{"_id": id}).Decode(&t); err != nil {
 		return nil, err
 	}
-	return &ticket, nil
+	return &t, nil
 }
 
-func (r *SupportRepository) GetTicketsByClient(ctx context.Context, clientID string) ([]models.Ticket, error) {
+func (r *supportRepository) GetTicketsByClient(ctx context.Context, clientID string) ([]models.Ticket, error) {
 	cursor, err := r.ticketsCol.Find(ctx, bson.M{"client_id": clientID})
 	if err != nil {
 		return nil, err
 	}
-	var result []models.Ticket
-	err = cursor.All(ctx, &result)
-	return result, err
+	var tickets []models.Ticket
+	if err := cursor.All(ctx, &tickets); err != nil {
+		return nil, err
+	}
+	return tickets, nil
 }
 
-func (r *SupportRepository) GetAllTickets(ctx context.Context) ([]models.Ticket, error) {
+func (r *supportRepository) GetAllTickets(ctx context.Context) ([]models.Ticket, error) {
 	cursor, err := r.ticketsCol.Find(ctx, bson.M{})
 	if err != nil {
 		return nil, err
 	}
-	var result []models.Ticket
-	err = cursor.All(ctx, &result)
-	return result, err
+	var tickets []models.Ticket
+	if err := cursor.All(ctx, &tickets); err != nil {
+		return nil, err
+	}
+	return tickets, nil
 }
 
-func (r *SupportRepository) UpdateTicketStatus(ctx context.Context, id primitive.ObjectID, status models.TicketStatus) error {
-	_, err := r.ticketsCol.UpdateByID(ctx, id, bson.M{
-		"$set": bson.M{
-			"status":     status,
-			"updated_at": time.Now(),
-		},
-	})
+func (r *supportRepository) GetTicketsByClientAndStatus(ctx context.Context, clientID string, status models.TicketStatus) ([]models.Ticket, error) {
+	filter := bson.M{"client_id": clientID, "status": status}
+	cursor, err := r.ticketsCol.Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	var tickets []models.Ticket
+	if err := cursor.All(ctx, &tickets); err != nil {
+		return nil, err
+	}
+	return tickets, nil
+}
+
+func (r *supportRepository) GetTicketsByStatus(ctx context.Context, status models.TicketStatus) ([]models.Ticket, error) {
+	filter := bson.M{"status": status}
+	cursor, err := r.ticketsCol.Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	var tickets []models.Ticket
+	if err := cursor.All(ctx, &tickets); err != nil {
+		return nil, err
+	}
+	return tickets, nil
+}
+
+func (r *supportRepository) UpdateTicketStatus(ctx context.Context, ticketID primitive.ObjectID, status models.TicketStatus) error {
+	update := bson.M{"$set": bson.M{"status": status, "updated_at": time.Now().UTC()}}
+	_, err := r.ticketsCol.UpdateByID(ctx, ticketID, update)
 	return err
 }
 
-// Chat messages
-
-func (r *SupportRepository) AddMessage(ctx context.Context, msg *models.Message) error {
+func (r *supportRepository) AddMessage(ctx context.Context, msg *models.Message) error {
 	msg.ID = primitive.NewObjectID()
-	msg.Timestamp = time.Now()
+	msg.Timestamp = time.Now().UTC()
 	_, err := r.messagesCol.InsertOne(ctx, msg)
 	return err
 }
 
-func (r *SupportRepository) GetMessagesByTicket(ctx context.Context, ticketID primitive.ObjectID) ([]models.Message, error) {
-	cursor, err := r.messagesCol.Find(ctx, bson.M{"ticket_id": ticketID})
+func (r *supportRepository) GetMessagesByTicket(ctx context.Context, ticketID primitive.ObjectID) ([]models.Message, error) {
+	filter := bson.M{"ticket_id": ticketID}
+	opts := options.Find().SetSort(bson.M{"timestamp": 1})
+	cursor, err := r.messagesCol.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, err
 	}
-	var result []models.Message
-	err = cursor.All(ctx, &result)
-	return result, err
+	var msgs []models.Message
+	if err := cursor.All(ctx, &msgs); err != nil {
+		return nil, err
+	}
+	return msgs, nil
 }

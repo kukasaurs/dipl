@@ -32,6 +32,7 @@ type OrderService interface {
 	FilterOrders(ctx context.Context, filter map[string]interface{}) ([]models.Order, error)
 	GetActiveOrdersCount(ctx context.Context) (int64, error)
 	GetTotalRevenue(ctx context.Context) (float64, error)
+	UpdatePaymentStatus(ctx context.Context, orderID string, status string) error
 }
 
 type orderService struct {
@@ -293,4 +294,24 @@ func (s *orderService) enrichWithServiceDetails(ctx context.Context, order *mode
 		total += svc.Price
 	}
 	order.TotalPrice = total
+}
+
+func (s *orderService) UpdatePaymentStatus(ctx context.Context, orderID string, status string) error {
+	// преобразуем строку в ObjectID
+	id, err := primitive.ObjectIDFromHex(orderID)
+	if err != nil {
+		return fmt.Errorf("invalid order id: %w", err)
+	}
+	// получаем заказ
+	order, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("order not found: %w", err)
+	}
+
+	order.Status = models.StatusPaid
+
+	if err := s.repo.Update(ctx, order); err != nil {
+		return fmt.Errorf("failed to update status: %w", err)
+	}
+	return nil
 }

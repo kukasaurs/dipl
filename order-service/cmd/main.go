@@ -97,6 +97,7 @@ func main() {
 			protectedCleaner.PUT("/:id/confirm", orderHandler.ConfirmCompletion)
 		}
 	}
+	router.POST("/api/internal/payments/notify", orderHandler.HandlePaymentNotification)
 
 	// 7. Запуск сервера
 	server := &http.Server{

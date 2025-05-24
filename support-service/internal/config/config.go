@@ -12,6 +12,7 @@ type Config struct {
 	JWTSecret              string
 	AuthServiceURL         string
 	ServerPort             string
+	UserServiceURL         string
 }
 
 func LoadConfig() (*Config, error) {
@@ -26,5 +27,6 @@ func LoadConfig() (*Config, error) {
 		NotificationServiceURL: os.Getenv("NOTIFICATION_SERVICE_URL"),
 		AuthServiceURL:         os.Getenv("AUTH_SERVICE_URL"),
 		ServerPort:             os.Getenv("SERVER_PORT"),
+		UserServiceURL:         os.Getenv("USER_SERVICE_URL"),
 	}, nil
 }

@@ -20,6 +20,21 @@ type OrderHandler struct {
 func NewOrderHandler(service services.OrderService, rdb *redis.Client) *OrderHandler {
 	return &OrderHandler{service: service, rdb: rdb}
 }
+func (h *OrderHandler) HandlePaymentNotification(c *gin.Context) {
+	var note struct {
+		OrderID string `json:"order_id"`
+		Status  string `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&note); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		return
+	}
+	if err := h.service.UpdatePaymentStatus(c.Request.Context(), note.OrderID, note.Status); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "ok"})
+}
 
 // clearCache invalidates relevant Redis keys after data changes.
 func (h *OrderHandler) clearCache(ctx context.Context) {
