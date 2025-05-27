@@ -68,14 +68,20 @@ func main() {
 	cron.Start(ctx)
 
 	// 6. Настройка роутера
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Logger(), gin.Recovery())
+	router.RedirectTrailingSlash = false
 
 	authMW := utils.AuthMiddleware(cfg.AuthServiceURL)
 
 	orders := router.Group("/orders")
 	orders.Use(authMW)
 	{
+		// без трэйлинг-слэша:
+		orders.POST("", orderHandler.CreateOrder)
+		// с трэйлинг-слэшем:
 		orders.POST("/", orderHandler.CreateOrder)
+
 		orders.GET("/my", orderHandler.GetMyOrders)
 		orders.PUT("/:id", orderHandler.UpdateOrder)
 		orders.DELETE("/:id", orderHandler.DeleteOrder)
