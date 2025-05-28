@@ -9,24 +9,11 @@ import (
 	"time"
 )
 
-type OrderRepository interface {
-	Create(ctx context.Context, order *models.Order) error
-	Update(ctx context.Context, order *models.Order) error
-	Delete(ctx context.Context, id primitive.ObjectID) error
-	GetByID(ctx context.Context, id primitive.ObjectID) (*models.Order, error)
-	GetByClientID(ctx context.Context, clientID string) ([]models.Order, error)
-	GetAll(ctx context.Context) ([]models.Order, error)
-	Filter(ctx context.Context, filter bson.M) ([]models.Order, error)
-	UnassignCleaner(ctx context.Context, id primitive.ObjectID) error
-	CountOrders(ctx context.Context, filter interface{}) (int64, error)
-	Aggregate(ctx context.Context, pipeline []bson.M) (*mongo.Cursor, error)
-}
-
 type orderRepository struct {
 	collection *mongo.Collection
 }
 
-func NewOrderRepository(db *mongo.Database) OrderRepository {
+func NewOrderRepository(db *mongo.Database) *orderRepository {
 	return &orderRepository{collection: db.Collection("orders")}
 }
 

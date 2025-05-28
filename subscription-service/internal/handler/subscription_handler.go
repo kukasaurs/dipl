@@ -2,7 +2,7 @@ package handler
 
 import (
 	"cleaning-app/subscription-service/internal/models"
-	"cleaning-app/subscription-service/internal/services"
+	"context"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -11,10 +11,25 @@ import (
 )
 
 type SubscriptionHandler struct {
-	service *services.SubscriptionService
+	service SubscriptionService
 }
 
-func NewSubscriptionHandler(s *services.SubscriptionService) *SubscriptionHandler {
+type SubscriptionService interface {
+	Extend(ctx context.Context, id primitive.ObjectID, extraCleanings int) error
+	PayForExtension(ctx context.Context, id primitive.ObjectID, extraDays int) error
+	Create(ctx context.Context, sub *models.Subscription) error
+	ProcessDailyOrders(ctx context.Context)
+	Update(ctx context.Context, id primitive.ObjectID, update bson.M) error
+	Cancel(ctx context.Context, id primitive.ObjectID) error
+	GetAll(ctx context.Context) ([]models.Subscription, error)
+	GetByClient(ctx context.Context, clientIDHex string) ([]models.Subscription, error)
+	FindExpiringOn(ctx context.Context, targetDate time.Time) ([]models.Subscription, error)
+	FindExpired(ctx context.Context, before time.Time) ([]models.Subscription, error)
+	UpdateStatus(ctx context.Context, id primitive.ObjectID, status models.SubscriptionStatus) error
+	GetByID(ctx context.Context, id primitive.ObjectID) (*models.Subscription, error)
+}
+
+func NewSubscriptionHandler(s SubscriptionService) *SubscriptionHandler {
 	return &SubscriptionHandler{service: s}
 }
 

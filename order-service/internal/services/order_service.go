@@ -3,7 +3,6 @@ package services
 import (
 	"cleaning-app/order-service/internal/config"
 	"cleaning-app/order-service/internal/models"
-	"cleaning-app/order-service/internal/repository"
 	"cleaning-app/order-service/internal/utils"
 	"context"
 	"crypto/sha1"
@@ -11,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go.mongodb.org/mongo-driver/mongo"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -18,31 +18,27 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// OrderService defines business operations on orders.
-type OrderService interface {
-	CreateOrder(ctx context.Context, order *models.Order) error
-	UpdateOrder(ctx context.Context, id primitive.ObjectID, updated *models.Order) error
-	DeleteOrder(ctx context.Context, id primitive.ObjectID) error
-	AssignCleaner(ctx context.Context, id primitive.ObjectID, cleanerID string) error
-	UnassignCleaner(ctx context.Context, id primitive.ObjectID) error
-	ConfirmCompletion(ctx context.Context, id primitive.ObjectID, photoURL string) error
-	GetOrderByID(ctx context.Context, id primitive.ObjectID) (*models.Order, error)
-	GetAllOrders(ctx context.Context) ([]models.Order, error)
-	GetOrdersByClient(ctx context.Context, clientID string) ([]models.Order, error)
-	FilterOrders(ctx context.Context, filter map[string]interface{}) ([]models.Order, error)
-	GetActiveOrdersCount(ctx context.Context) (int64, error)
-	GetTotalRevenue(ctx context.Context) (float64, error)
-	UpdatePaymentStatus(ctx context.Context, orderID string, status string) error
-}
-
 type orderService struct {
-	repo  repository.OrderRepository
+	repo  OrderRepository
 	redis *redis.Client
 	cfg   *config.Config
 }
 
+type OrderRepository interface {
+	Create(ctx context.Context, order *models.Order) error
+	Update(ctx context.Context, order *models.Order) error
+	Delete(ctx context.Context, id primitive.ObjectID) error
+	GetByID(ctx context.Context, id primitive.ObjectID) (*models.Order, error)
+	GetByClientID(ctx context.Context, clientID string) ([]models.Order, error)
+	GetAll(ctx context.Context) ([]models.Order, error)
+	Filter(ctx context.Context, filter bson.M) ([]models.Order, error)
+	UnassignCleaner(ctx context.Context, id primitive.ObjectID) error
+	CountOrders(ctx context.Context, filter interface{}) (int64, error)
+	Aggregate(ctx context.Context, pipeline []bson.M) (*mongo.Cursor, error)
+}
+
 // NewOrderService constructs a new OrderService.
-func NewOrderService(repo repository.OrderRepository, rdb *redis.Client, cfg *config.Config) OrderService {
+func NewOrderService(repo OrderRepository, rdb *redis.Client, cfg *config.Config) *orderService {
 	return &orderService{repo: repo, redis: rdb, cfg: cfg}
 }
 

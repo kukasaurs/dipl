@@ -24,11 +24,14 @@ type MessageResponse struct {
 }
 
 type SupportHandler struct {
-	service        *services.SupportService
+	service        SupportService
 	userServiceURL string
 }
 
-func NewSupportHandler(srv *services.SupportService, userServiceURL string) *SupportHandler {
+type SupportService interface {
+}
+
+func NewSupportHandler(srv SupportService, userServiceURL string) *SupportHandler {
 	return &SupportHandler{
 		service:        srv,
 		userServiceURL: userServiceURL,

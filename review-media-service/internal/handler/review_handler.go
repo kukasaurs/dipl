@@ -8,10 +8,13 @@ import (
 )
 
 type ReviewHandler struct {
-	service *services.ReviewService
+	service ReviewService
 }
 
-func NewReviewHandler(service *services.ReviewService) *ReviewHandler {
+type ReviewService interface {
+}
+
+func NewReviewHandler(service ReviewService) *ReviewHandler {
 	return &ReviewHandler{service: service}
 }
 

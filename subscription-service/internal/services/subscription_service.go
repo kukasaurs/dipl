@@ -6,14 +6,13 @@ import (
 	"time"
 
 	"cleaning-app/subscription-service/internal/models"
-	"cleaning-app/subscription-service/internal/repository"
 	"cleaning-app/subscription-service/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type SubscriptionService struct {
-	repo         *repository.SubscriptionRepository
+	repo         SubscriptionRepository
 	orderService struct {
 		// Создаёт новый заказ на основании существующей подписки
 		CreateOrderFromSubscription func(ctx context.Context, sub models.Subscription) error
@@ -23,8 +22,21 @@ type SubscriptionService struct {
 	paymentClient *utils.PaymentServiceClient
 }
 
+type SubscriptionRepository interface {
+	Create(ctx context.Context, s *models.Subscription) error
+	Update(ctx context.Context, id primitive.ObjectID, update bson.M) error
+	GetActiveSubscriptions(ctx context.Context) ([]models.Subscription, error)
+	UpdateAfterOrder(ctx context.Context, id primitive.ObjectID, nextDate time.Time) error
+	SetExpired(ctx context.Context, id primitive.ObjectID) error
+	GetByClient(ctx context.Context, clientIDHex string) ([]models.Subscription, error)
+	GetByID(ctx context.Context, id primitive.ObjectID) (*models.Subscription, error)
+	GetAll(ctx context.Context) ([]models.Subscription, error)
+	FindExpiringOn(ctx context.Context, targetDate time.Time) ([]models.Subscription, error)
+	FindExpired(ctx context.Context, before time.Time) ([]models.Subscription, error)
+}
+
 func NewSubscriptionService(
-	repo *repository.SubscriptionRepository,
+	repo SubscriptionRepository,
 	orderClient *utils.OrderServiceClient,
 	notifier *utils.NotificationServiceClient,
 	paymentClient *utils.PaymentServiceClient,

@@ -5,15 +5,15 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+
 	"cleaning-app/user-management-service/internal/config"
 	"cleaning-app/user-management-service/internal/handler"
 	"cleaning-app/user-management-service/internal/repository"
 	"cleaning-app/user-management-service/internal/services"
 	"cleaning-app/user-management-service/internal/utils"
-
-	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func main() {

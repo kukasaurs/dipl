@@ -12,30 +12,13 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// SupportRepository описывает все операции над тикетами и сообщениями
-type SupportRepository interface {
-	CreateTicket(ctx context.Context, ticket *models.Ticket) error
-
-	GetTicketByID(ctx context.Context, id primitive.ObjectID) (*models.Ticket, error)
-	GetTicketsByClient(ctx context.Context, clientID string) ([]models.Ticket, error)
-	GetAllTickets(ctx context.Context) ([]models.Ticket, error)
-
-	GetTicketsByClientAndStatus(ctx context.Context, clientID string, status models.TicketStatus) ([]models.Ticket, error)
-	GetTicketsByStatus(ctx context.Context, status models.TicketStatus) ([]models.Ticket, error)
-
-	UpdateTicketStatus(ctx context.Context, ticketID primitive.ObjectID, status models.TicketStatus) error
-
-	AddMessage(ctx context.Context, msg *models.Message) error
-	GetMessagesByTicket(ctx context.Context, ticketID primitive.ObjectID) ([]models.Message, error)
-}
-
 type supportRepository struct {
 	ticketsCol  *mongo.Collection
 	messagesCol *mongo.Collection
 }
 
 // NewSupportRepository создаёт новый репозиторий
-func NewSupportRepository(db *mongo.Database) SupportRepository {
+func NewSupportRepository(db *mongo.Database) *supportRepository {
 	return &supportRepository{
 		ticketsCol:  db.Collection("tickets"),
 		messagesCol: db.Collection("messages"),

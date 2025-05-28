@@ -3,7 +3,6 @@ package services
 import (
 	"cleaning-app/auth-service/internal/config"
 	"cleaning-app/auth-service/internal/models"
-	"cleaning-app/auth-service/internal/repository"
 	"cleaning-app/auth-service/internal/utils"
 	"context"
 	"errors"
@@ -18,7 +17,7 @@ import (
 )
 
 type AuthService struct {
-	userRepo *repositories.UserRepository
+	userRepo UserRepository
 	jwtUtil  *utils.JWTUtil
 	google   *GoogleAuthService
 	email    EmailService
@@ -26,7 +25,21 @@ type AuthService struct {
 	cfg      *config.Config
 }
 
-func NewAuthService(userRepo *repositories.UserRepository, jwtUtil *utils.JWTUtil, google *GoogleAuthService, email EmailService, redis *utils.RedisClient, config *config.Config) *AuthService {
+type UserRepository interface {
+	CreateUser(user *models.User) (*models.User, error)
+	FindUserByEmail(email string) (*models.User, error)
+	GetUserByID(userID primitive.ObjectID) (*models.User, error)
+	UpdateUser(user *models.User) error
+	UpdateUserFields(userID primitive.ObjectID, fields bson.M) error
+	UpdatePassword(userID primitive.ObjectID, hashedPassword string, resetRequired bool) error
+	DeleteUser(userID primitive.ObjectID) error
+	GetByRole(role string) ([]*models.User, error)
+	CountUsers(ctx context.Context) (int64, error)
+	GetRating(userID primitive.ObjectID) (float64, error)
+	AddRating(userID primitive.ObjectID, rating int) error
+}
+
+func NewAuthService(userRepo UserRepository, jwtUtil *utils.JWTUtil, google *GoogleAuthService, email EmailService, redis *utils.RedisClient, config *config.Config) *AuthService {
 	return &AuthService{userRepo, jwtUtil, google, email, redis, config}
 }
 

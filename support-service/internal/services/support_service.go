@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"cleaning-app/support-service/internal/models"
-	"cleaning-app/support-service/internal/repository"
 	"cleaning-app/support-service/internal/utils"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -12,12 +11,28 @@ import (
 
 // SupportService отвечает за бизнес-логику support-сервиса.
 type SupportService struct {
-	repo     repository.SupportRepository
+	repo     SupportRepository
 	notifier *utils.NotificationClient
 }
 
+type SupportRepository interface {
+	CreateTicket(ctx context.Context, ticket *models.Ticket) error
+
+	GetTicketByID(ctx context.Context, id primitive.ObjectID) (*models.Ticket, error)
+	GetTicketsByClient(ctx context.Context, clientID string) ([]models.Ticket, error)
+	GetAllTickets(ctx context.Context) ([]models.Ticket, error)
+
+	GetTicketsByClientAndStatus(ctx context.Context, clientID string, status models.TicketStatus) ([]models.Ticket, error)
+	GetTicketsByStatus(ctx context.Context, status models.TicketStatus) ([]models.Ticket, error)
+
+	UpdateTicketStatus(ctx context.Context, ticketID primitive.ObjectID, status models.TicketStatus) error
+
+	AddMessage(ctx context.Context, msg *models.Message) error
+	GetMessagesByTicket(ctx context.Context, ticketID primitive.ObjectID) ([]models.Message, error)
+}
+
 // NewSupportService конструирует SupportService.
-func NewSupportService(repo repository.SupportRepository, notifier *utils.NotificationClient) *SupportService {
+func NewSupportService(repo SupportRepository, notifier *utils.NotificationClient) *SupportService {
 	return &SupportService{repo: repo, notifier: notifier}
 }
 

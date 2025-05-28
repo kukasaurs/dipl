@@ -1,17 +1,26 @@
 package services
 
 import (
-	"cleaning-app/user-management-service/internal/models"
-	"cleaning-app/user-management-service/internal/repository"
 	"context"
+
 	"go.mongodb.org/mongo-driver/bson/primitive"
+
+	"cleaning-app/user-management-service/internal/models"
 )
 
 type UserService struct {
-	repo *repository.UserRepository
+	repo UserRepository
 }
 
-func NewUserService(repo *repository.UserRepository) *UserService {
+type UserRepository interface {
+	Create(ctx context.Context, u *models.User) error
+	GetByID(ctx context.Context, id primitive.ObjectID) (*models.User, error)
+	GetAll(ctx context.Context, role models.Role) ([]models.User, error)
+	SetBanStatus(ctx context.Context, id primitive.ObjectID, banned bool) error
+	UpdateRole(ctx context.Context, id primitive.ObjectID, role models.Role) error
+}
+
+func NewUserService(repo UserRepository) *UserService {
 	return &UserService{repo: repo}
 }
 
@@ -23,8 +32,8 @@ func (s *UserService) GetUserByID(ctx context.Context, id primitive.ObjectID) (*
 	return s.repo.GetByID(ctx, id)
 }
 
-func (s *UserService) GetAllUsers(ctx context.Context) ([]models.User, error) {
-	return s.repo.GetAll(ctx)
+func (s *UserService) GetAllUsers(ctx context.Context, role models.Role) ([]models.User, error) {
+	return s.repo.GetAll(ctx, role)
 }
 
 func (s *UserService) ChangeUserRole(ctx context.Context, id primitive.ObjectID, newRole models.Role) error {

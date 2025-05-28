@@ -1,19 +1,30 @@
 package handler
 
 import (
-	"cleaning-app/user-management-service/internal/models"
-	"cleaning-app/user-management-service/internal/services"
-	"cleaning-app/user-management-service/internal/utils"
+	"context"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"net/http"
+
+	"cleaning-app/user-management-service/internal/models"
+	"cleaning-app/user-management-service/internal/utils"
 )
 
 type UserHandler struct {
-	service *services.UserService
+	service UserService
 }
 
-func NewUserHandler(s *services.UserService) *UserHandler {
+type UserService interface {
+	CreateUser(ctx context.Context, user *models.User) error
+	GetUserByID(ctx context.Context, id primitive.ObjectID) (*models.User, error)
+	GetAllUsers(ctx context.Context, role models.Role) ([]models.User, error)
+	ChangeUserRole(ctx context.Context, id primitive.ObjectID, newRole models.Role) error
+	BlockUser(ctx context.Context, id primitive.ObjectID) error
+	UnblockUser(ctx context.Context, id primitive.ObjectID) error
+}
+
+func NewUserHandler(s UserService) *UserHandler {
 	return &UserHandler{service: s}
 }
 
@@ -37,11 +48,14 @@ func (h *UserHandler) GetMe(c *gin.Context) {
 
 // GET /api/users (admin/manager only)
 func (h *UserHandler) GetAllUsers(c *gin.Context) {
-	users, err := h.service.GetAllUsers(c.Request.Context())
+	role := c.Query("filter_role")
+	users, err := h.service.GetAllUsers(c.Request.Context(), models.ToRole(role))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch users"})
+
 		return
 	}
+
 	c.JSON(http.StatusOK, users)
 }
 
