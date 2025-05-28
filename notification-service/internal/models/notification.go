@@ -6,7 +6,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// NotificationType представляет типы уведомлений
 type NotificationType string
 
 const (
@@ -16,7 +15,6 @@ const (
 	TypeSystemMessage NotificationType = "system_message"
 )
 
-// DeliveryMethod представляет способ доставки уведомления
 type DeliveryMethod string
 
 const (
@@ -41,6 +39,6 @@ type PushNotificationRequest struct {
 	UserID    string `json:"user_id"`
 	Title     string `json:"title"`
 	Message   string `json:"message"`
-	Token     string `json:"token"`      // FCM Token устройства
-	EventType string `json:"event_type"` // welcome, password_changed, reminder
+	Token     string `json:"token"`
+	EventType string `json:"event_type"`
 }

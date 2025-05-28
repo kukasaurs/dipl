@@ -69,7 +69,6 @@ func (r *CleaningServiceRepository) GetActiveServices(ctx context.Context) ([]mo
 func (r *CleaningServiceRepository) CreateService(ctx context.Context, service *models.CleaningService) error {
 	collection := r.db.Collection(collectionName)
 
-	// Check for duplicate name
 	count, err := collection.CountDocuments(ctx, bson.M{"name": service.Name})
 	if err != nil {
 		return err
@@ -78,18 +77,15 @@ func (r *CleaningServiceRepository) CreateService(ctx context.Context, service *
 		return models.ErrDuplicate
 	}
 
-	// Set timestamps
 	now := primitive.NewDateTimeFromTime(time.Now())
 	service.CreatedAt = now
 	service.UpdatedAt = now
 
-	// Insert document
 	result, err := collection.InsertOne(ctx, service)
 	if err != nil {
 		return err
 	}
 
-	// Set the generated ID
 	service.ID = result.InsertedID.(primitive.ObjectID)
 
 	return nil
@@ -98,12 +94,10 @@ func (r *CleaningServiceRepository) CreateService(ctx context.Context, service *
 func (r *CleaningServiceRepository) UpdateService(ctx context.Context, service *models.CleaningService) error {
 	collection := r.db.Collection(collectionName)
 
-	// Check if ID is valid
 	if service.ID.IsZero() {
 		return models.ErrInvalidID
 	}
 
-	// Check for duplicate name (excluding current service)
 	count, err := collection.CountDocuments(ctx, bson.M{
 		"name": service.Name,
 		"_id":  bson.M{"$ne": service.ID},
@@ -115,10 +109,8 @@ func (r *CleaningServiceRepository) UpdateService(ctx context.Context, service *
 		return models.ErrDuplicate
 	}
 
-	// Update timestamp
 	service.UpdatedAt = primitive.NewDateTimeFromTime(time.Now())
 
-	// Update document
 	filter := bson.M{"_id": service.ID}
 	update := bson.M{"$set": bson.M{
 		"name":      service.Name,
@@ -142,7 +134,6 @@ func (r *CleaningServiceRepository) UpdateService(ctx context.Context, service *
 func (r *CleaningServiceRepository) DeleteService(ctx context.Context, id primitive.ObjectID) error {
 	collection := r.db.Collection(collectionName)
 
-	// Delete document
 	filter := bson.M{"_id": id}
 	result, err := collection.DeleteOne(ctx, filter)
 	if err != nil {
@@ -159,7 +150,6 @@ func (r *CleaningServiceRepository) DeleteService(ctx context.Context, id primit
 func (r *CleaningServiceRepository) UpdateServiceStatus(ctx context.Context, id primitive.ObjectID, isActive bool) error {
 	collection := r.db.Collection(collectionName)
 
-	// Update document
 	filter := bson.M{"_id": id}
 	update := bson.M{"$set": bson.M{
 		"isActive":  isActive,

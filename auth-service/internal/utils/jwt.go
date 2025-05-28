@@ -28,7 +28,7 @@ func (j *JWTUtil) GenerateToken(userID, role string, banned bool, resetRequired 
 		"exp":            expirationTime.Unix(),
 		"iat":            time.Now().Unix(),
 		"average_rating": averageRating,
-		"jti":            GenerateCode(10), // Добавляем уникальный идентификатор токена
+		"jti":            GenerateCode(10),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(j.secret))

@@ -22,13 +22,11 @@ func ConfigureServiceProxies(router *gin.RouterGroup) {
 	}
 
 	for _, svc := range services {
-		// Проксируем и /support
 		router.Any(svc.path, proxy.CreateProxy(
 			svc.target,
 			svc.stripPrefix,
 			svc.addPrefix,
 		))
-		// и всё что ниже /support/…
 		router.Any(svc.path+"/*proxyPath", proxy.CreateProxy(
 			svc.target,
 			svc.stripPrefix,

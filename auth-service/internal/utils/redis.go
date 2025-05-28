@@ -8,12 +8,10 @@ import (
 	"time"
 )
 
-// RedisClient is a wrapper around redis.Client
 type RedisClient struct {
 	client *redis.Client
 }
 
-// Set stores a value in Redis with the given key and expiration
 func (c *RedisClient) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
 	data, err := json.Marshal(value)
 	if err != nil {
@@ -23,7 +21,6 @@ func (c *RedisClient) Set(ctx context.Context, key string, value interface{}, ex
 	return c.client.Set(ctx, key, data, expiration).Err()
 }
 
-// Get retrieves a value from Redis
 func (c *RedisClient) Get(ctx context.Context, key string, dest interface{}) error {
 	val, err := c.client.Get(ctx, key).Result()
 	if err != nil {
@@ -36,12 +33,10 @@ func (c *RedisClient) Get(ctx context.Context, key string, dest interface{}) err
 	return json.Unmarshal([]byte(val), dest)
 }
 
-// Delete removes a key from Redis
 func (c *RedisClient) Delete(ctx context.Context, key string) error {
 	return c.client.Del(ctx, key).Err()
 }
 
-// Close closes the Redis client connection
 func (c *RedisClient) Close() error {
 	return c.client.Close()
 }

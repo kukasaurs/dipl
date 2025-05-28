@@ -43,7 +43,6 @@ func (h *NotificationHandler) PushNotificationHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "sent"})
 }
 
-// GetNotifications возвращает список уведомлений пользователя
 func (h *NotificationHandler) GetNotifications(c *gin.Context) {
 	userID, exists := c.Get("userId")
 	if !exists {
@@ -81,7 +80,6 @@ func (h *NotificationHandler) GetNotifications(c *gin.Context) {
 	c.JSON(http.StatusOK, notifications)
 }
 
-// MarkAsRead отмечает уведомление как прочитанное
 func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := primitive.ObjectIDFromHex(idStr)
@@ -99,7 +97,6 @@ func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "marked as read"})
 }
 
-// SendManualNotification создает уведомление вручную через API
 func (h *NotificationHandler) SendManualNotification(c *gin.Context) {
 	var req SendNotificationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -107,7 +104,6 @@ func (h *NotificationHandler) SendManualNotification(c *gin.Context) {
 		return
 	}
 
-	// Преобразование строковых типов в константы
 	var notifType models.NotificationType
 	var deliveryType models.DeliveryMethod
 

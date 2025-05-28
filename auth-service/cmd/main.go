@@ -28,20 +28,16 @@ func main() {
 		log.Fatal("Failed to load config:", err)
 	}
 
-	// 2. Инициализация MongoDB
 	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoURI))
 	if err != nil {
 		log.Fatal("Failed to connect to MongoDB:", err)
 	}
 	db := mongoClient.Database("cleaning_service")
 
-	// Зарегистрировать Mongo для Graceful Shutdown
 	shutdownManager.Register(func(ctx context.Context) error {
 		log.Println("[SHUTDOWN] Closing MongoDB connection...")
 		return mongoClient.Disconnect(ctx)
 	})
-
-	// 3. Инициализация Redis
 
 	opts, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
@@ -58,7 +54,6 @@ func main() {
 		return rdb.Close()
 	})
 
-	// 4. Email сервис (SMTP)
 	emailService := services.NewSMTPMailer(
 		cfg.SMTPHost,
 		cfg.SMTPPort,
@@ -66,7 +61,6 @@ func main() {
 		cfg.SMTPPass,
 	)
 
-	// 5. Инициализация репозиториев и сервисов
 	userRepo := repositories.NewUserRepository(db)
 	jwtUtil := utils.NewJWTUtil(cfg.JWTSecret)
 	googleAuth := services.NewGoogleAuthService(cfg.GoogleClientID)
@@ -75,7 +69,6 @@ func main() {
 
 	authHandler := handlers.NewAuthHandler(authService)
 
-	// 6. Настройка Gin сервера
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 	router.RedirectTrailingSlash = false
@@ -110,7 +103,6 @@ func main() {
 		Handler: router,
 	}
 
-	// 7. Запускаем сервер
 	go func() {
 		log.Println("Auth service running on :8000")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

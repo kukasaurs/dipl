@@ -160,7 +160,6 @@ func (r *UserRepository) AddRating(userID primitive.ObjectID, rating int) error 
 		return err
 	}
 
-	// Отдельно обновляем среднее значение
 	_, err = r.collection.UpdateOne(ctx, bson.M{"_id": userID}, mongo.Pipeline{
 		{{"$set", bson.M{
 			"average_rating": bson.M{"$avg": "$ratings"},

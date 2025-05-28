@@ -77,9 +77,7 @@ func main() {
 	orders := router.Group("/orders")
 	orders.Use(authMW)
 	{
-		// без трэйлинг-слэша:
 		orders.POST("", orderHandler.CreateOrder)
-		// с трэйлинг-слэшем:
 		orders.POST("/", orderHandler.CreateOrder)
 
 		orders.GET("/my", orderHandler.GetMyOrders)

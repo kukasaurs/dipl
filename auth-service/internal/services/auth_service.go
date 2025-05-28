@@ -36,8 +36,7 @@ func (s *AuthService) Register(user *models.User) (string, error) {
 		return "", errors.New("user already exists")
 	}
 
-	// Generate temporary password
-	tempPass := utils.GenerateCode(10) // You need to add this function to utils
+	tempPass := utils.GenerateCode(10)
 	hashed, err := bcrypt.GenerateFromPassword([]byte(tempPass), bcrypt.DefaultCost)
 	if err != nil {
 		return "", err
@@ -57,9 +56,7 @@ func (s *AuthService) Register(user *models.User) (string, error) {
 		return "", err
 	}
 
-	// Send email with temporary password
 	if err := s.email.SendVerificationCode(user.Email, tempPass); err != nil {
-		// Clean up if email sending fails
 		_ = s.userRepo.DeleteUser(createdUser.ID)
 		return "", errors.New("failed to send email with temporary password")
 	}
@@ -104,20 +101,16 @@ func (s *AuthService) GetProfile(userID primitive.ObjectID) (*models.User, error
 	var cachedUser models.User
 	err := s.redis.Get(ctx, cacheKey, &cachedUser)
 	if err == nil {
-		// Профиль найден в кэше
 		return &cachedUser, nil
 	}
 
-	// Профиль не найден в Redis, грузим из MongoDB
 	user, err := s.userRepo.GetUserByID(userID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Сохраняем в кэш на 5 минут
 	err = s.redis.Set(ctx, cacheKey, user, 5*time.Minute)
 	if err != nil {
-		// Не фейлим процесс, просто логируем ошибку
 		fmt.Printf("Failed to cache user profile: %v\n", err)
 	}
 
@@ -146,7 +139,7 @@ func (s *AuthService) UpdateProfile(userID primitive.ObjectID, req interface{}) 
 	}
 
 	if len(updateFields) == 0 {
-		return nil // Нечего обновлять
+		return nil
 	}
 
 	if err := s.userRepo.UpdateUserFields(userID, updateFields); err != nil {

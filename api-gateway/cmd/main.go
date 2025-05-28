@@ -41,7 +41,6 @@ func main() {
 		"/api/payments",
 		"/payments",
 	))
-	// И всё остальное ниже /api/payments/...
 	r.Any("/api/payments/*proxyPath", proxy.CreateProxy(
 		"http://payment-service:8005",
 		"/api/payments",

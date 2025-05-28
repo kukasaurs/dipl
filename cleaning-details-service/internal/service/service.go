@@ -43,7 +43,6 @@ func (s *CleaningService) GetAllServices(ctx context.Context) ([]models.Cleaning
 func (s *CleaningService) GetActiveServices(ctx context.Context) ([]models.CleaningService, error) {
 	cacheKey := "active_services"
 
-	// Try to get from Redis
 	cached, err := utils.GetFromCache(ctx, s.redisClient, cacheKey)
 	if err == nil && cached != "" {
 		var services []models.CleaningService
@@ -52,13 +51,11 @@ func (s *CleaningService) GetActiveServices(ctx context.Context) ([]models.Clean
 		}
 	}
 
-	// Fetch from DB
 	services, err := s.repo.GetActiveServices(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Cache result
 	data, _ := json.Marshal(services)
 	utils.SetToCache(ctx, s.redisClient, cacheKey, string(data), utils.RedisCacheDuration)
 
