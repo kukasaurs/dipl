@@ -1,13 +1,13 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
 	"cleaning-app/support-service/internal/models"
-	"cleaning-app/support-service/internal/services"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -29,6 +29,15 @@ type SupportHandler struct {
 }
 
 type SupportService interface {
+	CreateTicket(ctx context.Context, ticket *models.Ticket) error
+	GetTicketByID(ctx context.Context, id primitive.ObjectID) (*models.Ticket, error)
+	GetTicketsForClient(ctx context.Context, clientID string) ([]models.Ticket, error)
+	GetAllTickets(ctx context.Context) ([]models.Ticket, error)
+	UpdateTicketStatus(ctx context.Context, id primitive.ObjectID, status models.TicketStatus) error
+	AddMessage(ctx context.Context, msg *models.Message) error
+	GetMessagesByTicket(ctx context.Context, ticketID primitive.ObjectID) ([]models.Message, error)
+	GetTicketsForUserByStatus(ctx context.Context, userID string, status models.TicketStatus) ([]models.Ticket, error)
+	GetAllTicketsByStatus(ctx context.Context, status models.TicketStatus) ([]models.Ticket, error)
 }
 
 func NewSupportHandler(srv SupportService, userServiceURL string) *SupportHandler {
