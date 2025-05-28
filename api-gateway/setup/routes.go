@@ -13,7 +13,7 @@ func ConfigureServiceProxies(router *gin.RouterGroup) {
 		addPrefix   string
 	}{
 		{"/orders", "http://order-service:8001", "/api/orders", "/orders"},
-		{"/notifications", "http://notification-service:8009", "/api/notifications", "/notifications"},
+		{"/notifications", "http://notification-service:8002", "/api/notifications", "/notifications"},
 		{"/support", "http://support-service:8008", "/api/support", "/support"},
 		{"/subscriptions", "http://subscription-service:8004", "/api/subscriptions", "/subscriptions"},
 		{"/services", "http://cleaning-details-service:8003", "/api/services", "/api/services"},

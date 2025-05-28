@@ -73,18 +73,21 @@ func main() {
 	go notificationService.StartRedisSubscribers(ctx)
 
 	// 7. Инициализация маршрутов
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Logger(), gin.Recovery())
+	router.RedirectTrailingSlash = false
 
 	api := router.Group("/notifications")
 	{
 		// Публичные маршруты
 		api.POST("/send", notificationHandler.SendManualNotification)
 
-		// Защищенные маршруты
-		secured := api.Group("/", utils.AuthMiddleware(cfg.AuthServiceURL))
+		// Защищённые маршруты
+		secured := api.Group("", utils.AuthMiddleware(cfg.AuthServiceURL))
 		{
-			secured.GET("/", notificationHandler.GetNotifications)
-			secured.PUT("/:id/read", notificationHandler.MarkAsRead)
+			// GET /notifications and /notifications/
+			secured.GET("", notificationHandler.GetNotifications)
+			secured.PUT(":id/read", notificationHandler.MarkAsRead)
 		}
 	}
 

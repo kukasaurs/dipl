@@ -76,7 +76,9 @@ func main() {
 	authHandler := handlers.NewAuthHandler(authService)
 
 	// 6. Настройка Gin сервера
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Logger(), gin.Recovery())
+	router.RedirectTrailingSlash = false
 
 	auth := router.Group("/auth")
 	{

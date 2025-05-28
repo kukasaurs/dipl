@@ -7,6 +7,4 @@ coverage.*
 *.dll
 *.so
 *.dylib
-*.env
-.env.docker
 *~

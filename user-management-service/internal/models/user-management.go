@@ -1,3 +1,4 @@
+// user-management-service/internal/models/user.go
 package models
 
 import (
@@ -9,25 +10,25 @@ import (
 type Role string
 
 const (
-	RoleAdmin   Role = "admin"
-	RoleManager Role = "manager"
-	RoleCleaner Role = "cleaner"
 	RoleUser    Role = "user"
+	RoleCleaner Role = "cleaner"
+	RoleManager Role = "manager"
+	RoleAdmin   Role = "admin"
 )
 
 type User struct {
-	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
-	Email         string             `bson:"email" json:"email" validate:"required,email"`
-	Password      string             `bson:"password" json:"-" validate:"required,min=6"`
-	Role          Role               `bson:"role" json:"role" validate:"required,oneof=user cleaner manager admin"`
-	Banned        bool               `bson:"banned" json:"banned"`
-	FirstName     string             `bson:"first_name" json:"first_name" validate:"omitempty"`
-	LastName      string             `bson:"last_name" json:"last_name" validate:"omitempty"`
-	Address       string             `bson:"address" json:"address" validate:"omitempty"`
-	PhoneNumber   string             `bson:"phone_number" json:"phone_number" validate:"omitempty,e164"`
-	DateOfBirth   time.Time          `bson:"date_of_birth" json:"date_of_birth,omitempty" validate:"omitempty"`
-	Gender        string             `bson:"gender" json:"gender" validate:"omitempty,oneof=male female other"`
-	ResetRequired bool               `bson:"reset_required" json:"reset_required"`
+	ID            primitive.ObjectID `bson:"_id,omitempty"  json:"id"`
+	Email         string             `bson:"email"         json:"email"`
+	FirstName     string             `bson:"first_name"    json:"first_name"`
+	LastName      string             `bson:"last_name"     json:"last_name"`
+	PhoneNumber   string             `bson:"phone_number"  json:"phone_number"`
+	Address       string             `bson:"address"       json:"address"`
+	DateOfBirth   time.Time          `bson:"date_of_birth" json:"date_of_birth"`
+	Gender        string             `bson:"gender"        json:"gender"`
+	Role          Role               `bson:"role"          json:"role"`
+	Banned        bool               `bson:"banned"        json:"banned"`
+	ResetRequired bool               `bson:"reset_required"json:"reset_required"`
+	Password      string             `bson:"password" json:"-"`
 }
 
 func (r Role) IsValid() bool {

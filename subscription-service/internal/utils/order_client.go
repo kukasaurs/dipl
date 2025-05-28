@@ -20,12 +20,13 @@ func NewOrderClient(url string) *OrderServiceClient {
 
 func (c *OrderServiceClient) CreateOrderFromSubscription(ctx context.Context, sub models.Subscription) error {
 	body := map[string]interface{}{
-		"client_id":       sub.ClientID,
-		"service_ids":     sub.ServiceIDs,
+		"order_id":        sub.OrderID.Hex(),
+		"user_id":         sub.UserID.Hex(),
 		"source":          "subscription",
 		"subscription_id": sub.ID.Hex(),
 		"date":            time.Now().Format("2006-01-02"),
 	}
+
 	jsonData, _ := json.Marshal(body)
 
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.URL+"/api/orders", bytes.NewBuffer(jsonData))

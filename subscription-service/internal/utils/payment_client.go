@@ -1,3 +1,5 @@
+// subscription-service/internal/utils/payment_client.go
+
 package utils
 
 import (
@@ -8,30 +10,47 @@ import (
 	"net/http"
 )
 
+// PaymentServiceClient умеет шлёпать запрос в мок-Payment Service на /payments
 type PaymentServiceClient struct {
-	URL string
+	URL string // например "http://payment-service:8005"
 }
 
+// NewPaymentClient создаёт клиента.
 func NewPaymentClient(url string) *PaymentServiceClient {
 	return &PaymentServiceClient{URL: url}
 }
 
-func (p *PaymentServiceClient) PayForCleanings(ctx context.Context, clientID string, subscriptionID string, amount int) error {
-	body := map[string]interface{}{
-		"client_id":       clientID,
-		"subscription_id": subscriptionID,
-		"amount":          amount, // кол-во уборок
-		"description":     fmt.Sprintf("Subscription payment: %d cleanings", amount),
+// ChargeSubscription шлёт POST /payments с {order_id, user_id, amount}
+func (c *PaymentServiceClient) ChargeSubscription(ctx context.Context, orderID, userID string, amount int64) error {
+	payload := struct {
+		OrderID string `json:"order_id"`
+		UserID  string `json:"user_id"`
+		Amount  int64  `json:"amount"`
+	}{
+		OrderID: orderID,
+		UserID:  userID,
+		Amount:  amount,
 	}
 
-	data, _ := json.Marshal(body)
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payment payload: %w", err)
+	}
 
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, p.URL+"/api/payments", bytes.NewBuffer(data))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL+"/payments", bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("build payment request: %w", err)
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil || resp.StatusCode >= 300 {
-		return fmt.Errorf("payment failed: %v", err)
+	if err != nil {
+		return fmt.Errorf("send payment request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("payment service returned status %d", resp.StatusCode)
 	}
 	return nil
 }

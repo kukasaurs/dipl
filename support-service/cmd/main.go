@@ -41,7 +41,10 @@ func main() {
 	supportService := services.NewSupportService(repo, notifier)
 	supportHandler := handler.NewSupportHandler(supportService, cfg.UserServiceURL)
 
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Logger(), gin.Recovery())
+	router.RedirectTrailingSlash = false
+
 	authMW := utils.AuthMiddleware(cfg.AuthServiceURL)
 
 	api := router.Group("/support", authMW)
