@@ -83,17 +83,24 @@ func (s *orderService) UpdateOrder(ctx context.Context, id primitive.ObjectID, u
 	if err != nil {
 		return err
 	}
-	// apply changes
+
+	// присваиваем ID, иначе UpdateByID не сработает
+	updated.ID = id
+
+	// применяем обновления
 	existing.Address = updated.Address
 	existing.ServiceType = updated.ServiceType
 	existing.Date = updated.Date
 	existing.Comment = updated.Comment
 	existing.ServiceIDs = updated.ServiceIDs
+
 	s.enrichWithServiceDetails(ctx, existing)
+
+	// обновляем
 	if err := s.repo.Update(ctx, existing); err != nil {
 		return err
 	}
-	// invalidate cache
+
 	s.clearCache(ctx, existing.ClientID)
 	return nil
 }
