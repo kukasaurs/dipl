@@ -2,7 +2,6 @@ package services
 
 import (
 	"cleaning-app/order-service/internal/config"
-	"cleaning-app/order-service/internal/repository"
 	"cleaning-app/order-service/internal/utils"
 	"context"
 	"go.mongodb.org/mongo-driver/bson"
@@ -11,11 +10,11 @@ import (
 )
 
 type CronJobService struct {
-	OrderRepo repository.OrderRepository
+	OrderRepo OrderRepository
 	Cfg       *config.Config
 }
 
-func NewCronJobService(repo repository.OrderRepository, cfg *config.Config) *CronJobService {
+func NewCronJobService(repo OrderRepository, cfg *config.Config) *CronJobService {
 	return &CronJobService{
 		OrderRepo: repo,
 		Cfg:       cfg,
