@@ -3,7 +3,6 @@ package services
 import (
 	"cleaning-app/review-media-service/internal/config"
 	"cleaning-app/review-media-service/internal/models"
-	"cleaning-app/review-media-service/internal/repository"
 	"cleaning-app/review-media-service/internal/utils"
 	"context"
 	"github.com/minio/minio-go/v7"
@@ -13,13 +12,18 @@ import (
 )
 
 type MediaService struct {
-	repo   *repository.MediaRepository
+	repo   MediaRepository
 	minio  *minio.Client
 	bucket string
 	cfg    *config.Config
 }
 
-func NewMediaService(r *repository.MediaRepository, minioClient *minio.Client, bucket string, cfg *config.Config) *MediaService {
+type MediaRepository interface {
+	Save(ctx context.Context, media *models.Media) error
+	GetByOrderID(ctx context.Context, orderID string) ([]models.Media, error)
+}
+
+func NewMediaService(r MediaRepository, minioClient *minio.Client, bucket string, cfg *config.Config) *MediaService {
 	return &MediaService{repo: r, minio: minioClient, bucket: bucket, cfg: cfg}
 }
 

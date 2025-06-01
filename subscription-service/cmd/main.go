@@ -40,11 +40,17 @@ func main() {
 
 	// 3. Инициализация зависимостей
 	repo := repository.NewSubscriptionRepository(db)
-
 	orderClient := utils.NewOrderClient(cfg.OrderServiceURL)
 	paymentClient := utils.NewPaymentClient(cfg.PaymentServiceURL)
+	notificationClient := utils.NewNotificationClient(cfg.NotifiServiceURL)
 
-	subService := services.NewSubscriptionService(repo, orderClient, paymentClient)
+	subService := services.NewSubscriptionService(
+		repo,
+		orderClient,
+		notificationClient,
+		paymentClient,
+	)
+
 	notifier := services.NewNotifier(subService, nil) // если тебе нужны уведомления — передай NotificationService
 	go notifier.Start(ctx)
 	// 4. Обработчики
@@ -54,7 +60,9 @@ func main() {
 	go utils.StartSubscriptionScheduler(ctx, subService.ProcessDailyOrders)
 
 	// 6. Настройка Gin
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Logger(), gin.Recovery())
+	router.RedirectTrailingSlash = false
 
 	// 7. Middleware
 	authMW := utils.AuthMiddleware(cfg.AuthServiceURL)
@@ -62,11 +70,10 @@ func main() {
 	api := router.Group("/subscriptions", authMW)
 	api.Use(authMW)
 	{
-		api.POST("/", subHandler.Create)
+		api.POST("", subHandler.Create)
 		api.POST("/extend/:id", subHandler.Extend)
 		api.GET("/my", subHandler.GetMy)
-		api.GET("/", subHandler.GetAll)
-		// Если остались:
+		api.GET("", subHandler.GetAll)
 		api.PUT("/:id", subHandler.Update)
 		api.DELETE("/:id", subHandler.Cancel)
 	}

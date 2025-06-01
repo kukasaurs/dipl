@@ -16,11 +16,10 @@ type NotificationRequest struct {
 	Title        string            `json:"title"`
 	Message      string            `json:"message"`
 	Type         string            `json:"type"`
-	DeliveryType string            `json:"delivery_type"` // push | email | both
+	DeliveryType string            `json:"delivery_type"`
 	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 
-// SendNotification отправляет уведомление в сервис уведомлений
 func SendNotification(ctx context.Context, cfg *config.Config, notification NotificationRequest) error {
 	if cfg == nil {
 		return fmt.Errorf("config is nil")

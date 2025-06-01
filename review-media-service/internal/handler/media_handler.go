@@ -1,16 +1,23 @@
 package handler
 
 import (
-	"cleaning-app/review-media-service/internal/services"
+	"cleaning-app/review-media-service/internal/models"
+	"context"
 	"github.com/gin-gonic/gin"
+	"mime/multipart"
 	"net/http"
 )
 
 type MediaHandler struct {
-	service *services.MediaService
+	service MediaService
 }
 
-func NewMediaHandler(service *services.MediaService) *MediaHandler {
+type MediaService interface {
+	UploadMedia(ctx context.Context, orderID, uploaderID string, file multipart.File, header *multipart.FileHeader) (string, error)
+	GetMediaByOrder(ctx context.Context, orderID string) ([]models.Media, error)
+}
+
+func NewMediaHandler(service MediaService) *MediaHandler {
 	return &MediaHandler{service: service}
 }
 

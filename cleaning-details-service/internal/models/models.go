@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-// CleaningService represents a cleaning service
 type CleaningService struct {
 	ID        primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
 	Name      string             `json:"name" bson:"name" validate:"required"`
@@ -17,7 +16,6 @@ type CleaningService struct {
 	UpdatedAt primitive.DateTime `json:"updatedAt,omitempty" bson:"updatedAt,omitempty"`
 }
 
-// Validate validates the CleaningService
 func (cs CleaningService) Validate() error {
 	validate := utils.GetValidator()
 	err := validate.Struct(cs)
@@ -29,7 +27,6 @@ func (cs CleaningService) Validate() error {
 	return nil
 }
 
-// ServiceStatusUpdate represents a status update request
 type ServiceStatusUpdate struct {
 	IsActive bool `json:"isActive" bson:"isActive"`
 }

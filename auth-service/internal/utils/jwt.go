@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt/v4"
 )
 
@@ -29,7 +28,7 @@ func (j *JWTUtil) GenerateToken(userID, role string, banned bool, resetRequired 
 		"exp":            expirationTime.Unix(),
 		"iat":            time.Now().Unix(),
 		"average_rating": averageRating,
-		"jti":            GenerateCode(10), // Добавляем уникальный идентификатор токена
+		"jti":            GenerateCode(10),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(j.secret))
@@ -44,11 +43,6 @@ func (j *JWTUtil) ValidateToken(tokenString string) (*jwt.Token, error) {
 	})
 }
 
-var validate = validator.New()
-
-func ValidateStruct(s interface{}) error {
-	return validate.Struct(s)
-}
 func GenerateCode(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	seededRand := rand.New(rand.NewSource(time.Now().UnixNano()))

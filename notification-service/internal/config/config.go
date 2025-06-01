@@ -19,7 +19,6 @@ type Config struct {
 	FirebaseKey         string
 }
 
-// LoadConfig подгружает переменные окружения из .env
 func LoadConfig() (*Config, error) {
 	if err := godotenv.Load(); err != nil {
 		return nil, err

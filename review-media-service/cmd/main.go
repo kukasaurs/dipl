@@ -57,7 +57,9 @@ func main() {
 	mediaHandler := handler.NewMediaHandler(mediaService)
 
 	// 7. Настройка роутера
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Logger(), gin.Recovery())
+	router.RedirectTrailingSlash = false
 
 	// Аутентификация
 	router.Use(utils.AuthMiddleware(cfg.AuthServiceURL))

@@ -1,18 +1,30 @@
 package handler
 
 import (
-	"cleaning-app/user-management-service/internal/models"
-	"cleaning-app/user-management-service/internal/services"
+	"context"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"net/http"
+
+	"cleaning-app/user-management-service/internal/models"
+	"cleaning-app/user-management-service/internal/utils"
 )
 
 type UserHandler struct {
-	service *services.UserService
+	service UserService
 }
 
-func NewUserHandler(s *services.UserService) *UserHandler {
+type UserService interface {
+	CreateUser(ctx context.Context, user *models.User) error
+	GetUserByID(ctx context.Context, id primitive.ObjectID) (*models.User, error)
+	GetAllUsers(ctx context.Context, role models.Role) ([]models.User, error)
+	ChangeUserRole(ctx context.Context, id primitive.ObjectID, newRole models.Role) error
+	BlockUser(ctx context.Context, id primitive.ObjectID) error
+	UnblockUser(ctx context.Context, id primitive.ObjectID) error
+}
+
+func NewUserHandler(s UserService) *UserHandler {
 	return &UserHandler{service: s}
 }
 
@@ -36,42 +48,56 @@ func (h *UserHandler) GetMe(c *gin.Context) {
 
 // GET /api/users (admin/manager only)
 func (h *UserHandler) GetAllUsers(c *gin.Context) {
-	users, err := h.service.GetAllUsers(c.Request.Context())
+	role := c.Query("filter_role")
+	users, err := h.service.GetAllUsers(c.Request.Context(), models.ToRole(role))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch users"})
+
 		return
 	}
+
 	c.JSON(http.StatusOK, users)
 }
 
 // POST /api/users (manager+admin)
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	var input struct {
-		Email string      `json:"email" binding:"required,email"`
-		Name  string      `json:"name" binding:"required"`
-		Phone string      `json:"phone" binding:"required"`
-		Role  models.Role `json:"role,omitempty"` // Только для админов
+		Email    string      `json:"email"    binding:"required,email"`
+		Name     string      `json:"name"     binding:"required"`
+		Phone    string      `json:"phone"    binding:"required"`
+		Password string      `json:"password" binding:"required,min=6"`
+		Role     models.Role `json:"role"     binding:"required,oneof=manager admin"`
 	}
-
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	currentUserRole := c.GetString("role")
-
-	user := models.User{
-		Email:       input.Email,
-		FirstName:   input.Name,
-		PhoneNumber: input.Phone,
-		Banned:      false,
+	// Хешируем пароль
+	hash, err := utils.HashPassword(input.Password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "не удалось захешировать пароль"})
+		return
 	}
 
-	// Ограничения для менеджеров
-	if currentUserRole == "manager" {
-		user.Role = models.RoleUser
-	} else {
-		user.Role = input.Role
+	// Определяем, кто создаёт
+	creatorRole := c.GetString("role")
+	role := input.Role
+	if creatorRole == string(models.RoleManager) {
+		// Менеджер не может создавать никого кроме обычных юзеров
+		role = models.RoleUser
+	}
+
+	user := models.User{
+		ID:            primitive.NewObjectID(),
+		Email:         input.Email,
+		FirstName:     input.Name,
+		LastName:      "",
+		PhoneNumber:   input.Phone,
+		Role:          role,
+		Banned:        false,
+		ResetRequired: false,
+		Password:      hash,
 	}
 
 	if err := h.service.CreateUser(c.Request.Context(), &user); err != nil {
@@ -79,7 +105,13 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, user)
+	// Отдаём только безопасные поля
+	c.JSON(http.StatusCreated, gin.H{
+		"id":         user.ID.Hex(),
+		"email":      user.Email,
+		"first_name": user.FirstName,
+		"role":       user.Role,
+	})
 }
 
 // PUT /api/users/:id/role (admin only) - Изменение роли существующего пользователя

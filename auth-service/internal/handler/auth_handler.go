@@ -3,6 +3,7 @@ package handlers
 import (
 	"cleaning-app/auth-service/internal/models"
 	"cleaning-app/auth-service/internal/services"
+	"context"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -12,7 +13,23 @@ import (
 )
 
 type AuthHandler struct {
-	authService *services.AuthService
+	authService AuthService
+}
+type AuthService interface {
+	Register(user *models.User) (string, error)
+	Login(email, password string) (string, error)
+	GetProfile(userID primitive.ObjectID) (*models.User, error)
+	UpdateProfile(userID primitive.ObjectID, req interface{}) error
+	ChangePassword(userID primitive.ObjectID, oldPassword, newPassword string) error
+	Validate(token string) (*jwt.Token, error)
+	SetInitialPassword(userID primitive.ObjectID, tempPassword, newPassword string) error
+	Logout(tokenString string) error
+	GetByRole(role string) ([]*models.User, error)
+	GetTotalUsers(ctx context.Context) (int64, error)
+	AddRating(userID primitive.ObjectID, rating int) error
+	GetRating(userID primitive.ObjectID) (float64, error)
+	ResendTemporaryPassword(email string) error
+	GoogleLogin(idToken string) (string, error)
 }
 
 func NewAuthHandler(authService *services.AuthService) *AuthHandler {

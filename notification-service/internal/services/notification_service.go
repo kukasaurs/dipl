@@ -2,7 +2,6 @@ package services
 
 import (
 	"cleaning-app/notification-service/internal/models"
-	"cleaning-app/notification-service/internal/repository"
 	"cleaning-app/notification-service/internal/utils/push"
 	"context"
 	"encoding/json"
@@ -14,7 +13,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// Каналы Redis для получения событий
 const (
 	OrderEventsChannel   = "order_events"
 	SupportEventsChannel = "support_events"
@@ -24,15 +22,19 @@ const (
 	ReviewEventsChannel  = "review_events"
 )
 
-// NotificationService обрабатывает все операции, связанные с уведомлениями
 type NotificationService struct {
-	repo  *repository.NotificationRepository
+	repo  NotificationRepository
 	redis *redis.Client
 	FCM   *push.FCMClient
 }
 
-// NewNotificationService создает новый экземпляр сервиса уведомлений
-func NewNotificationService(repo *repository.NotificationRepository, rdb *redis.Client, fcm *push.FCMClient) *NotificationService {
+type NotificationRepository interface {
+	Create(ctx context.Context, notification *models.Notification) error
+	GetByUserID(ctx context.Context, userID string, limit, offset int64) ([]models.Notification, error)
+	MarkAsRead(ctx context.Context, id primitive.ObjectID) error
+}
+
+func NewNotificationService(repo NotificationRepository, rdb *redis.Client, fcm *push.FCMClient) *NotificationService {
 	return &NotificationService{
 		repo:  repo,
 		redis: rdb,

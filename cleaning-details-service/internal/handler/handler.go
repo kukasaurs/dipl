@@ -28,7 +28,6 @@ func NewCleaningServiceHandler(service CleaningServiceService) *CleaningServiceH
 	return &CleaningServiceHandler{service: service}
 }
 
-// --- Public ---
 func (h *CleaningServiceHandler) GetActiveServices(c *gin.Context) {
 	services, err := h.service.GetActiveServices(c.Request.Context())
 	if err != nil {
@@ -66,7 +65,6 @@ func (h *CleaningServiceHandler) GetServicesByIDs(c *gin.Context) {
 	c.JSON(http.StatusOK, services)
 }
 
-// --- Admin ---
 func (h *CleaningServiceHandler) GetAllServices(c *gin.Context) {
 	services, err := h.service.GetAllServices(c.Request.Context())
 	if err != nil {
@@ -146,7 +144,6 @@ func (h *CleaningServiceHandler) ToggleServiceStatus(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// --- Helpers ---
 func handleServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, models.ErrNotFound):

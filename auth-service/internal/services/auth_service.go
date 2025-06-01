@@ -3,7 +3,6 @@ package services
 import (
 	"cleaning-app/auth-service/internal/config"
 	"cleaning-app/auth-service/internal/models"
-	"cleaning-app/auth-service/internal/repository"
 	"cleaning-app/auth-service/internal/utils"
 	"context"
 	"errors"
@@ -18,7 +17,7 @@ import (
 )
 
 type AuthService struct {
-	userRepo *repositories.UserRepository
+	userRepo UserRepository
 	jwtUtil  *utils.JWTUtil
 	google   *GoogleAuthService
 	email    EmailService
@@ -26,7 +25,21 @@ type AuthService struct {
 	cfg      *config.Config
 }
 
-func NewAuthService(userRepo *repositories.UserRepository, jwtUtil *utils.JWTUtil, google *GoogleAuthService, email EmailService, redis *utils.RedisClient, config *config.Config) *AuthService {
+type UserRepository interface {
+	CreateUser(user *models.User) (*models.User, error)
+	FindUserByEmail(email string) (*models.User, error)
+	GetUserByID(userID primitive.ObjectID) (*models.User, error)
+	UpdateUser(user *models.User) error
+	UpdateUserFields(userID primitive.ObjectID, fields bson.M) error
+	UpdatePassword(userID primitive.ObjectID, hashedPassword string, resetRequired bool) error
+	DeleteUser(userID primitive.ObjectID) error
+	GetByRole(role string) ([]*models.User, error)
+	CountUsers(ctx context.Context) (int64, error)
+	GetRating(userID primitive.ObjectID) (float64, error)
+	AddRating(userID primitive.ObjectID, rating int) error
+}
+
+func NewAuthService(userRepo UserRepository, jwtUtil *utils.JWTUtil, google *GoogleAuthService, email EmailService, redis *utils.RedisClient, config *config.Config) *AuthService {
 	return &AuthService{userRepo, jwtUtil, google, email, redis, config}
 }
 
@@ -36,8 +49,7 @@ func (s *AuthService) Register(user *models.User) (string, error) {
 		return "", errors.New("user already exists")
 	}
 
-	// Generate temporary password
-	tempPass := utils.GenerateCode(10) // You need to add this function to utils
+	tempPass := utils.GenerateCode(10)
 	hashed, err := bcrypt.GenerateFromPassword([]byte(tempPass), bcrypt.DefaultCost)
 	if err != nil {
 		return "", err
@@ -57,9 +69,7 @@ func (s *AuthService) Register(user *models.User) (string, error) {
 		return "", err
 	}
 
-	// Send email with temporary password
 	if err := s.email.SendVerificationCode(user.Email, tempPass); err != nil {
-		// Clean up if email sending fails
 		_ = s.userRepo.DeleteUser(createdUser.ID)
 		return "", errors.New("failed to send email with temporary password")
 	}
@@ -104,20 +114,16 @@ func (s *AuthService) GetProfile(userID primitive.ObjectID) (*models.User, error
 	var cachedUser models.User
 	err := s.redis.Get(ctx, cacheKey, &cachedUser)
 	if err == nil {
-		// Профиль найден в кэше
 		return &cachedUser, nil
 	}
 
-	// Профиль не найден в Redis, грузим из MongoDB
 	user, err := s.userRepo.GetUserByID(userID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Сохраняем в кэш на 5 минут
 	err = s.redis.Set(ctx, cacheKey, user, 5*time.Minute)
 	if err != nil {
-		// Не фейлим процесс, просто логируем ошибку
 		fmt.Printf("Failed to cache user profile: %v\n", err)
 	}
 
@@ -146,7 +152,7 @@ func (s *AuthService) UpdateProfile(userID primitive.ObjectID, req interface{}) 
 	}
 
 	if len(updateFields) == 0 {
-		return nil // Нечего обновлять
+		return nil
 	}
 
 	if err := s.userRepo.UpdateUserFields(userID, updateFields); err != nil {

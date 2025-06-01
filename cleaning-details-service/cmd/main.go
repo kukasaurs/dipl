@@ -62,9 +62,10 @@ func main() {
 	serviceHandler := handlers.NewCleaningServiceHandler(serviceSrv)
 
 	// 5. Инициализация Gin
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Logger(), gin.Recovery())
 	router.RedirectTrailingSlash = false
-	// 6. Публичные маршруты
+
 	public := router.Group("/api/services")
 	{
 		public.GET("/active", serviceHandler.GetActiveServices)

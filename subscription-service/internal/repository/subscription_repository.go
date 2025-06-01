@@ -18,12 +18,23 @@ func NewSubscriptionRepository(db *mongo.Database) *SubscriptionRepository {
 	return &SubscriptionRepository{col: db.Collection("subscriptions")}
 }
 
-func (r *SubscriptionRepository) Create(ctx context.Context, sub *models.Subscription) error {
-	sub.ID = primitive.NewObjectID()
-	sub.CreatedAt = time.Now()
-	sub.UpdatedAt = time.Now()
-	_, err := r.col.InsertOne(ctx, sub)
-	return err
+func (r *SubscriptionRepository) Create(ctx context.Context, s *models.Subscription) error {
+	now := time.Now().UTC()
+	s.CreatedAt = now
+	s.UpdatedAt = now
+	s.Status = models.StatusActive
+
+	res, err := r.col.InsertOne(ctx, s)
+	if err != nil {
+		return err
+	}
+
+	// Присваиваем сгенерированный Mongo ObjectID обратно в структуру
+	if oid, ok := res.InsertedID.(primitive.ObjectID); ok {
+		s.ID = oid
+	}
+
+	return nil
 }
 
 func (r *SubscriptionRepository) Update(ctx context.Context, id primitive.ObjectID, update bson.M) error {
@@ -57,16 +68,25 @@ func (r *SubscriptionRepository) SetExpired(ctx context.Context, id primitive.Ob
 	return r.Update(ctx, id, bson.M{"status": models.StatusExpired})
 }
 
-func (r *SubscriptionRepository) GetByClient(ctx context.Context, clientID string) ([]models.Subscription, error) {
-	cursor, err := r.col.Find(ctx, bson.M{"client_id": clientID})
+func (r *SubscriptionRepository) GetByClient(ctx context.Context, clientIDHex string) ([]models.Subscription, error) {
+	// 1) Конвертируем строку в ObjectID
+	clientID, err := primitive.ObjectIDFromHex(clientIDHex)
 	if err != nil {
 		return nil, err
 	}
-	var result []models.Subscription
-	if err := cursor.All(ctx, &result); err != nil {
+
+	// 2) Ищем все документы, где user_id == clientID
+	cursor, err := r.col.Find(ctx, bson.M{"user_id": clientID})
+	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	defer cursor.Close(ctx)
+
+	var subs []models.Subscription
+	if err := cursor.All(ctx, &subs); err != nil {
+		return nil, err
+	}
+	return subs, nil
 }
 
 func (r *SubscriptionRepository) GetByID(ctx context.Context, id primitive.ObjectID) (*models.Subscription, error) {

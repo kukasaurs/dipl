@@ -1,8 +1,10 @@
 package services
 
 import (
+	"cleaning-app/order-service/internal/models"
 	"context"
 	"encoding/json"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"log"
 	"time"
 
@@ -12,6 +14,22 @@ import (
 type CacheRefresher struct {
 	orderService OrderService
 	redis        *redis.Client
+}
+
+type OrderService interface {
+	CreateOrder(ctx context.Context, order *models.Order) error
+	UpdateOrder(ctx context.Context, id primitive.ObjectID, updated *models.Order) error
+	DeleteOrder(ctx context.Context, id primitive.ObjectID) error
+	AssignCleaner(ctx context.Context, id primitive.ObjectID, cleanerID string) error
+	UnassignCleaner(ctx context.Context, id primitive.ObjectID) error
+	ConfirmCompletion(ctx context.Context, id primitive.ObjectID, photoURL string) error
+	GetOrderByID(ctx context.Context, id primitive.ObjectID) (*models.Order, error)
+	GetAllOrders(ctx context.Context) ([]models.Order, error)
+	GetOrdersByClient(ctx context.Context, clientID string) ([]models.Order, error)
+	FilterOrders(ctx context.Context, filter map[string]interface{}) ([]models.Order, error)
+	GetActiveOrdersCount(ctx context.Context) (int64, error)
+	GetTotalRevenue(ctx context.Context) (float64, error)
+	UpdatePaymentStatus(ctx context.Context, orderID string, status string) error
 }
 
 func NewCacheRefresher(orderService OrderService, redis *redis.Client) *CacheRefresher {

@@ -56,14 +56,12 @@ func AuthMiddleware(authURL string) gin.HandlerFunc {
 			return
 		}
 
-		// Проверяем banned
 		if data.Banned {
 			log.Printf("[AUTH] Access denied for banned user: %s", data.UserID)
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Account is banned"})
 			return
 		}
 
-		// Проверяем reset_required
 		if data.ResetRequired {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Password reset required"})
 			return

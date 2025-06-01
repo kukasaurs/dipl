@@ -6,8 +6,6 @@ import (
 	"os"
 )
 
-// Config holds all application configuration
-// config/config.go
 type Config struct {
 	MongoURI       string
 	ServerPort     string

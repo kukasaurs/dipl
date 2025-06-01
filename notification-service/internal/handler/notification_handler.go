@@ -2,7 +2,7 @@ package handler
 
 import (
 	"cleaning-app/notification-service/internal/models"
-	"cleaning-app/notification-service/internal/services"
+	"context"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"net/http"
@@ -10,7 +10,16 @@ import (
 )
 
 type NotificationHandler struct {
-	service *services.NotificationService
+	service NotificationService
+}
+
+type NotificationService interface {
+	SendPush(req models.PushNotificationRequest) error
+	SendNotification(ctx context.Context, notification *models.Notification) error
+	ProcessEvent(ctx context.Context, channel string, payload []byte) error
+	GetNotifications(ctx context.Context, userID string, limit, offset int64) ([]models.Notification, error)
+	MarkAsRead(ctx context.Context, id primitive.ObjectID) error
+	StartRedisSubscribers(ctx context.Context)
 }
 
 type SendNotificationRequest struct {
@@ -23,7 +32,7 @@ type SendNotificationRequest struct {
 	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 
-func NewNotificationHandler(service *services.NotificationService) *NotificationHandler {
+func NewNotificationHandler(service NotificationService) *NotificationHandler {
 	return &NotificationHandler{service: service}
 }
 
@@ -43,7 +52,6 @@ func (h *NotificationHandler) PushNotificationHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "sent"})
 }
 
-// GetNotifications возвращает список уведомлений пользователя
 func (h *NotificationHandler) GetNotifications(c *gin.Context) {
 	userID, exists := c.Get("userId")
 	if !exists {
@@ -81,7 +89,6 @@ func (h *NotificationHandler) GetNotifications(c *gin.Context) {
 	c.JSON(http.StatusOK, notifications)
 }
 
-// MarkAsRead отмечает уведомление как прочитанное
 func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := primitive.ObjectIDFromHex(idStr)
@@ -99,7 +106,6 @@ func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "marked as read"})
 }
 
-// SendManualNotification создает уведомление вручную через API
 func (h *NotificationHandler) SendManualNotification(c *gin.Context) {
 	var req SendNotificationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -107,7 +113,6 @@ func (h *NotificationHandler) SendManualNotification(c *gin.Context) {
 		return
 	}
 
-	// Преобразование строковых типов в константы
 	var notifType models.NotificationType
 	var deliveryType models.DeliveryMethod
 

@@ -2,7 +2,6 @@ package handler
 
 import (
 	"cleaning-app/order-service/internal/models"
-	"cleaning-app/order-service/internal/services"
 	"context"
 	"net/http"
 
@@ -12,12 +11,28 @@ import (
 )
 
 type OrderHandler struct {
-	service services.OrderService
+	service OrderService
 	rdb     *redis.Client
 }
 
+type OrderService interface {
+	CreateOrder(ctx context.Context, order *models.Order) error
+	UpdateOrder(ctx context.Context, id primitive.ObjectID, updated *models.Order) error
+	DeleteOrder(ctx context.Context, id primitive.ObjectID) error
+	AssignCleaner(ctx context.Context, id primitive.ObjectID, cleanerID string) error
+	UnassignCleaner(ctx context.Context, id primitive.ObjectID) error
+	ConfirmCompletion(ctx context.Context, id primitive.ObjectID, photoURL string) error
+	GetOrderByID(ctx context.Context, id primitive.ObjectID) (*models.Order, error)
+	GetAllOrders(ctx context.Context) ([]models.Order, error)
+	GetOrdersByClient(ctx context.Context, clientID string) ([]models.Order, error)
+	FilterOrders(ctx context.Context, filter map[string]interface{}) ([]models.Order, error)
+	GetActiveOrdersCount(ctx context.Context) (int64, error)
+	GetTotalRevenue(ctx context.Context) (float64, error)
+	UpdatePaymentStatus(ctx context.Context, orderID string, status string) error
+}
+
 // NewOrderHandler creates a new OrderHandler with given service and Redis client.
-func NewOrderHandler(service services.OrderService, rdb *redis.Client) *OrderHandler {
+func NewOrderHandler(service OrderService, rdb *redis.Client) *OrderHandler {
 	return &OrderHandler{service: service, rdb: rdb}
 }
 func (h *OrderHandler) HandlePaymentNotification(c *gin.Context) {
