@@ -3,24 +3,18 @@ package services
 import (
 	"cleaning-app/review-media-service/internal/config"
 	"cleaning-app/review-media-service/internal/models"
+	"cleaning-app/review-media-service/internal/repository"
 	"cleaning-app/review-media-service/internal/utils"
 	"context"
 	"time"
 )
 
 type ReviewService struct {
-	repo ReviewRepository
+	repo *repository.ReviewRepository
 	cfg  *config.Config
 }
 
-type ReviewRepository interface {
-	Create(ctx context.Context, review *models.Review) error
-	GetByTargetID(ctx context.Context, targetID string) ([]models.Review, error)
-	ExistsByOrderAndReviewer(ctx context.Context, orderID, reviewerID string) (bool, error)
-	AggregateStatistics(ctx context.Context) ([]ReviewStat, error)
-}
-
-func NewReviewService(r ReviewRepository, cfg *config.Config) *ReviewService {
+func NewReviewService(r *repository.ReviewRepository, cfg *config.Config) *ReviewService {
 	return &ReviewService{repo: r, cfg: cfg}
 }
 
@@ -59,6 +53,6 @@ type ReviewStat struct {
 	Average  float64 `json:"average_rating"`
 }
 
-func (s *ReviewService) GetReviewStatistics(ctx context.Context) ([]ReviewStat, error) {
+func (s *ReviewService) GetReviewStatistics(ctx context.Context) ([]repository.ReviewStat, error) {
 	return s.repo.AggregateStatistics(ctx)
 }
