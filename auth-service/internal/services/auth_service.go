@@ -73,15 +73,6 @@ func (s *AuthService) Register(user *models.User) (string, error) {
 		_ = s.userRepo.DeleteUser(createdUser.ID)
 		return "", errors.New("failed to send email with temporary password")
 	}
-	_ = utils.SendNotification(context.Background(), s.cfg, utils.NotificationRequest{
-		UserID:  user.ID.Hex(),
-		Role:    user.Role,
-		Title:   "Добро пожаловать!",
-		Message: "Благодарим за регистрацию. Приятного пользования нашим сервисом! ",
-
-		Type:         "welcome",
-		DeliveryType: "push",
-	})
 
 	return s.jwtUtil.GenerateToken(createdUser.ID.Hex(), createdUser.Role, false, createdUser.ResetRequired, 0)
 }
@@ -180,16 +171,6 @@ func (s *AuthService) ChangePassword(userID primitive.ObjectID, oldPassword, new
 	if err := user.HashPassword(); err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
-
-	user.ResetRequired = false
-	_ = utils.SendNotification(context.Background(), s.cfg, utils.NotificationRequest{
-		UserID:       user.ID.Hex(),
-		Role:         user.Role,
-		Title:        "Пароль изменен",
-		Message:      "Ваш пароль успешно обновлен.",
-		Type:         "security",
-		DeliveryType: "push",
-	})
 
 	return s.userRepo.UpdateUser(user)
 }

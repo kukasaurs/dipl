@@ -42,17 +42,13 @@ func main() {
 	repo := repository.NewSubscriptionRepository(db)
 	orderClient := utils.NewOrderClient(cfg.OrderServiceURL)
 	paymentClient := utils.NewPaymentClient(cfg.PaymentServiceURL)
-	notificationClient := utils.NewNotificationClient(cfg.NotifiServiceURL)
 
 	subService := services.NewSubscriptionService(
 		repo,
 		orderClient,
-		notificationClient,
 		paymentClient,
 	)
 
-	notifier := services.NewNotifier(subService, nil) // если тебе нужны уведомления — передай NotificationService
-	go notifier.Start(ctx)
 	// 4. Обработчики
 	subHandler := handler.NewSubscriptionHandler(subService)
 

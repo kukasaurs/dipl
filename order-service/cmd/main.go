@@ -58,7 +58,8 @@ func main() {
 	orderRepo := repository.NewOrderRepository(db)
 	orderService := services.NewOrderService(orderRepo, rdb, cfg)
 
-	orderHandler := handler.NewOrderHandler(orderService, rdb)
+	// Передаём cfg в OrderHandler для корректной отправки уведомлений
+	orderHandler := handler.NewOrderHandler(orderService, rdb, cfg)
 
 	// 5. Старт фонового кэш-рефрешера
 	cacheRefresher := services.NewCacheRefresher(orderService, rdb)
@@ -87,8 +88,10 @@ func main() {
 		protected := orders.Group("/")
 		protected.Use(utils.RequireRoles("manager", "admin"))
 		{
-			protected.PUT("/:id/assign", orderHandler.AssignCleaner)
-			protected.PUT("/:id/unassign", orderHandler.UnassignCleaner)
+			protected.PUT("/:id/assign", orderHandler.AssignCleaner)           // body: { "cleaner_id": "..." }
+			protected.PUT("/:id/assign-multiple", orderHandler.AssignCleaners) // body: { "cleaner_ids": ["id1","id2"] }
+			protected.PUT("/:id/unassign", orderHandler.UnassignCleaner)       // body: { "cleaner_id": "..." }
+
 			protected.GET("/all", orderHandler.GetAllOrders)
 			protected.GET("/filter", orderHandler.FilterOrders)
 			protected.GET("/stats", orderHandler.GetActiveOrdersCount)
@@ -110,7 +113,7 @@ func main() {
 	}
 
 	go func() {
-		log.Println("Order service running on :8001")
+		log.Println("Order service running on", cfg.ServerPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}

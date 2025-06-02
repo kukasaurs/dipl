@@ -20,7 +20,7 @@ const (
 type Order struct {
 	ID             primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	ClientID       string             `bson:"client_id" json:"client_id"`
-	CleanerID      *string            `bson:"cleaner_id,omitempty" json:"cleaner_id,omitempty"`
+	CleanerID      []string           `bson:"cleaner_id,omitempty" json:"cleaner_id,omitempty"`
 	Address        string             `bson:"address" json:"address"`
 	ServiceType    string             `bson:"service_type" json:"service_type"`
 	ServiceIDs     []string           `bson:"service_ids" json:"service_ids"`
