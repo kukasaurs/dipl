@@ -1,14 +1,14 @@
 package handler
 
 import (
+	"cleaning-app/user-management-service/internal/models"
+	"cleaning-app/user-management-service/internal/utils"
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-
-	"cleaning-app/user-management-service/internal/models"
-	"cleaning-app/user-management-service/internal/utils"
 )
 
 type UserHandler struct {
@@ -52,7 +52,6 @@ func (h *UserHandler) GetAllUsers(c *gin.Context) {
 	users, err := h.service.GetAllUsers(c.Request.Context(), models.ToRole(role))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch users"})
-
 		return
 	}
 
@@ -105,6 +104,22 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
+	// Уведомление созданному пользователю
+	go func() {
+		payload := utils.NotificationPayload{
+			RecipientID:   user.ID.Hex(),
+			RecipientRole: "user",
+			Title:         "Аккаунт создан",
+			Body:          fmt.Sprintf("Ваш аккаунт (%s) успешно создан.", user.Email),
+			Type:          "user_created",
+			Channel:       "email",
+			Data: map[string]interface{}{
+				"user_id": user.ID.Hex(),
+			},
+		}
+		_ = utils.SendNotification(context.Background(), payload)
+	}()
+
 	// Отдаём только безопасные поля
 	c.JSON(http.StatusCreated, gin.H{
 		"id":         user.ID.Hex(),
@@ -131,10 +146,35 @@ func (h *UserHandler) ChangeUserRole(c *gin.Context) {
 		return
 	}
 
+	// Получаем старую информацию для уведомления
+	user, err := h.service.GetUserByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
 	if err := h.service.ChangeUserRole(c.Request.Context(), id, input.Role); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update role"})
 		return
 	}
+
+	// Уведомление пользователю о смене роли
+	go func() {
+		payload := utils.NotificationPayload{
+			RecipientID:   id.Hex(),
+			RecipientRole: "user",
+			Title:         "Роль изменена",
+			Body:          fmt.Sprintf("Ваша роль изменена с '%s' на '%s'.", user.Role, input.Role),
+			Type:          "role_changed",
+			Channel:       "email",
+			Data: map[string]interface{}{
+				"user_id":  id.Hex(),
+				"new_role": input.Role,
+				"old_role": user.Role,
+			},
+		}
+		_ = utils.SendNotification(context.Background(), payload)
+	}()
 
 	c.JSON(http.StatusOK, gin.H{"message": "user role updated"})
 }
@@ -147,10 +187,34 @@ func (h *UserHandler) BlockUser(c *gin.Context) {
 		return
 	}
 
+	// Получаем информацию о пользователе для уведомления
+	_, err = h.service.GetUserByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
 	if err := h.service.BlockUser(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to block user"})
 		return
 	}
+
+	// Уведомление пользователю о блокировке
+	go func() {
+		payload := utils.NotificationPayload{
+			RecipientID:   id.Hex(),
+			RecipientRole: "user",
+			Title:         "Аккаунт заблокирован",
+			Body:          "Ваш аккаунт временно заблокирован. Пожалуйста, свяжитесь с поддержкой.",
+			Type:          "user_blocked",
+			Channel:       "email",
+			Data: map[string]interface{}{
+				"user_id": id.Hex(),
+			},
+		}
+		_ = utils.SendNotification(context.Background(), payload)
+	}()
+
 	c.JSON(http.StatusOK, gin.H{"message": "user blocked"})
 }
 
@@ -162,10 +226,34 @@ func (h *UserHandler) UnblockUser(c *gin.Context) {
 		return
 	}
 
+	// Получаем информацию о пользователе для уведомления
+	_, err = h.service.GetUserByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
 	if err := h.service.UnblockUser(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unblock user"})
 		return
 	}
+
+	// Уведомление пользователю о разблокировке
+	go func() {
+		payload := utils.NotificationPayload{
+			RecipientID:   id.Hex(),
+			RecipientRole: "user",
+			Title:         "Аккаунт разблокирован",
+			Body:          "Ваш аккаунт был разблокирован. Добро пожаловать обратно!",
+			Type:          "user_unblocked",
+			Channel:       "email",
+			Data: map[string]interface{}{
+				"user_id": id.Hex(),
+			},
+		}
+		_ = utils.SendNotification(context.Background(), payload)
+	}()
+
 	c.JSON(http.StatusOK, gin.H{"message": "user unblocked"})
 }
 

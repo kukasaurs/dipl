@@ -38,12 +38,10 @@ type SubscriptionRepository interface {
 func NewSubscriptionService(
 	repo SubscriptionRepository,
 	orderClient *utils.OrderServiceClient,
-	notifier *utils.NotificationServiceClient,
 	paymentClient *utils.PaymentServiceClient,
 ) *SubscriptionService {
 	s := &SubscriptionService{repo: repo}
 	s.orderService.CreateOrderFromSubscription = orderClient.CreateOrderFromSubscription
-	s.orderService.Notify = notifier.SendNotification
 	s.paymentClient = paymentClient
 	return s
 }

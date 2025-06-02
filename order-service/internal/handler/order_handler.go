@@ -1,9 +1,15 @@
 package handler
 
 import (
-	"cleaning-app/order-service/internal/models"
 	"context"
+	"fmt"
+	"log"
 	"net/http"
+	"time"
+
+	"cleaning-app/order-service/internal/config"
+	"cleaning-app/order-service/internal/models"
+	"cleaning-app/order-service/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -13,15 +19,20 @@ import (
 type OrderHandler struct {
 	service OrderService
 	rdb     *redis.Client
+	cfg     *config.Config
 }
 
 type OrderService interface {
 	CreateOrder(ctx context.Context, order *models.Order) error
 	UpdateOrder(ctx context.Context, id primitive.ObjectID, updated *models.Order) error
 	DeleteOrder(ctx context.Context, id primitive.ObjectID) error
+
 	AssignCleaner(ctx context.Context, id primitive.ObjectID, cleanerID string) error
-	UnassignCleaner(ctx context.Context, id primitive.ObjectID) error
+	AssignCleaners(ctx context.Context, id primitive.ObjectID, cleanerIDs []string) error
+	UnassignCleaner(ctx context.Context, id primitive.ObjectID, cleanerID string) error
+
 	ConfirmCompletion(ctx context.Context, id primitive.ObjectID, photoURL string) error
+
 	GetOrderByID(ctx context.Context, id primitive.ObjectID) (*models.Order, error)
 	GetAllOrders(ctx context.Context) ([]models.Order, error)
 	GetOrdersByClient(ctx context.Context, clientID string) ([]models.Order, error)
@@ -31,10 +42,11 @@ type OrderService interface {
 	UpdatePaymentStatus(ctx context.Context, orderID string, status string) error
 }
 
-// NewOrderHandler creates a new OrderHandler with given service and Redis client.
-func NewOrderHandler(service OrderService, rdb *redis.Client) *OrderHandler {
-	return &OrderHandler{service: service, rdb: rdb}
+// NewOrderHandler создаёт новый хендлер для заказов и получает конфиг
+func NewOrderHandler(service OrderService, rdb *redis.Client, cfg *config.Config) *OrderHandler {
+	return &OrderHandler{service: service, rdb: rdb, cfg: cfg}
 }
+
 func (h *OrderHandler) HandlePaymentNotification(c *gin.Context) {
 	var note struct {
 		OrderID string `json:"order_id"`
@@ -51,14 +63,11 @@ func (h *OrderHandler) HandlePaymentNotification(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }
 
-// clearCache invalidates relevant Redis keys after data changes.
 func (h *OrderHandler) clearCache(ctx context.Context) {
-	// adjust keys as per your caching strategy
-	h.rdb.Del(ctx, "orders:activeCount")
-	h.rdb.Del(ctx, "orders:totalRevenue")
-	h.rdb.Del(ctx, "orders:all")
+	h.rdb.Del(ctx, "orders:activeCount", "orders:totalRevenue", "orders:all")
 }
 
+// CreateOrder остаётся без изменений по логике, но вызываем SendNotification с новым контекстом
 func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	userID := c.GetString("userId")
 	var order models.Order
@@ -71,8 +80,29 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	// invalidate cache
 	h.clearCache(c.Request.Context())
+
+	notification := utils.NotificationRequest{
+		Role:         "manager",
+		Title:        "Новый заказ",
+		Message:      fmt.Sprintf("Поступил новый заказ #%s от клиента %s.", order.ID.Hex(), userID),
+		Type:         "new_order",
+		DeliveryType: "email",
+		Metadata: map[string]string{
+			"order_id":  order.ID.Hex(),
+			"client_id": userID,
+		},
+	}
+
+	go func(n utils.NotificationRequest) {
+		ctxNotify, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := utils.SendNotification(ctxNotify, h.cfg, n); err != nil {
+			log.Printf("[OrderHandler] failed to send notification: %v\n", err)
+		}
+	}(notification)
+
 	c.JSON(http.StatusCreated, order)
 }
 
@@ -92,17 +122,38 @@ func (h *OrderHandler) UpdateOrder(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
 		return
 	}
-	var updated models.Order
-	if err := c.ShouldBindJSON(&updated); err != nil {
+	var orderUpdate models.Order
+	if err := c.ShouldBindJSON(&orderUpdate); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
 	}
-	if err := h.service.UpdateOrder(c.Request.Context(), id, &updated); err != nil {
+	if err := h.service.UpdateOrder(c.Request.Context(), id, &orderUpdate); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	// invalidate cache
 	h.clearCache(c.Request.Context())
+
+	userID := c.GetString("userId")
+	notification := utils.NotificationRequest{
+		Role:         "manager",
+		Title:        "Заказ обновлён",
+		Message:      fmt.Sprintf("Пользователь %s внёс изменения в заказ #%s.", userID, id.Hex()),
+		Type:         "order_updated",
+		DeliveryType: "email",
+		Metadata: map[string]string{
+			"order_id": id.Hex(),
+		},
+	}
+
+	go func(n utils.NotificationRequest) {
+		ctxNotify, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := utils.SendNotification(ctxNotify, h.cfg, n); err != nil {
+			log.Printf("[OrderHandler] failed to send notification: %v\n", err)
+		}
+	}(notification)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Order updated"})
 }
 
@@ -116,11 +167,80 @@ func (h *OrderHandler) DeleteOrder(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	// invalidate cache
 	h.clearCache(c.Request.Context())
+
+	userID := c.GetString("userId")
+	notification := utils.NotificationRequest{
+		UserID:       "",
+		Role:         "manager",
+		Title:        "Заказ удалён",
+		Message:      fmt.Sprintf("Пользователь %s удалил заказ #%s.", userID, id.Hex()),
+		Type:         "order_deleted",
+		DeliveryType: "email",
+		Metadata: map[string]string{
+			"order_id": id.Hex(),
+		},
+	}
+
+	go func(n utils.NotificationRequest) {
+		ctxNotify, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := utils.SendNotification(ctxNotify, h.cfg, n); err != nil {
+			log.Printf("[OrderHandler] failed to send notification: %v\n", err)
+		}
+	}(notification)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Order deleted"})
 }
 
+// AssignCleaners — теперь правильно формируем NotificationRequest
+func (h *OrderHandler) AssignCleaners(c *gin.Context) {
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+	var body struct {
+		CleanerIDs []string `json:"cleaner_ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || len(body.CleanerIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Provide non-empty array cleaner_ids"})
+		return
+	}
+
+	if err := h.service.AssignCleaners(c.Request.Context(), id, body.CleanerIDs); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+	h.clearCache(c.Request.Context())
+
+	for _, cleanerID := range body.CleanerIDs {
+		notification := utils.NotificationRequest{
+			UserID:       cleanerID,
+			Role:         "cleaner",
+			Title:        "Вам назначен новый заказ",
+			Message:      fmt.Sprintf("Вы назначены на заказ #%s. Проверьте детали в приложении.", id.Hex()),
+			Type:         "assigned_order",
+			DeliveryType: "push",
+			Metadata: map[string]string{
+				"order_id": id.Hex(),
+			},
+		}
+		go func(cln string, n utils.NotificationRequest) {
+			ctxNotify, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if err := utils.SendNotification(ctxNotify, h.cfg, n); err != nil {
+				log.Printf("[OrderHandler] failed to send notification to %s: %v\n", cln, err)
+			}
+		}(cleanerID, notification)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Cleaners assigned"})
+}
+
+// AssignCleaner вызывает AssignCleaners{…}, но тоже надо правильно формировать NotificationRequest
 func (h *OrderHandler) AssignCleaner(c *gin.Context) {
 	id, err := primitive.ObjectIDFromHex(c.Param("id"))
 	if err != nil {
@@ -128,36 +248,85 @@ func (h *OrderHandler) AssignCleaner(c *gin.Context) {
 		return
 	}
 	var body struct {
-		CleanerID string `json:"cleaner_id"`
+		CleanerID string `json:"cleaner_id" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || body.CleanerID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Provide cleaner_id"})
 		return
 	}
-	if err := h.service.AssignCleaner(c.Request.Context(), id, body.CleanerID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if err := h.service.AssignCleaners(c.Request.Context(), id, []string{body.CleanerID}); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
-	// invalidate cache
 	h.clearCache(c.Request.Context())
+
+	notification := utils.NotificationRequest{
+		UserID:       body.CleanerID,
+		Role:         "cleaner",
+		Title:        "Вам назначен заказ",
+		Message:      fmt.Sprintf("Вы назначены на заказ #%s. Проверьте детали в приложении.", id.Hex()),
+		Type:         "assigned_order",
+		DeliveryType: "push",
+		Metadata: map[string]string{
+			"order_id": id.Hex(),
+		},
+	}
+	go func(n utils.NotificationRequest) {
+		ctxNotify, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := utils.SendNotification(ctxNotify, h.cfg, n); err != nil {
+			log.Printf("[OrderHandler] failed to send notification: %v\n", err)
+		}
+	}(notification)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Cleaner assigned"})
 }
 
+// UnassignCleaner теперь тоже передаём новый контекст и правильный Request
 func (h *OrderHandler) UnassignCleaner(c *gin.Context) {
 	id, err := primitive.ObjectIDFromHex(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
 		return
 	}
-	if err := h.service.UnassignCleaner(c.Request.Context(), id); err != nil {
+	var body struct {
+		CleanerID string `json:"cleaner_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || body.CleanerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Provide cleaner_id"})
+		return
+	}
+	if err := h.service.UnassignCleaner(c.Request.Context(), id, body.CleanerID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	// invalidate cache
 	h.clearCache(c.Request.Context())
+
+	notification := utils.NotificationRequest{
+		UserID:       body.CleanerID,
+		Role:         "cleaner",
+		Title:        "Вас сняли с заказа",
+		Message:      fmt.Sprintf("Вас сняли с заказа #%s.", id.Hex()),
+		Type:         "unassigned_order",
+		DeliveryType: "push",
+		Metadata: map[string]string{
+			"order_id": id.Hex(),
+		},
+	}
+	go func(n utils.NotificationRequest) {
+		ctxNotify, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := utils.SendNotification(ctxNotify, h.cfg, n); err != nil {
+			log.Printf("[OrderHandler] failed to send notification: %v\n", err)
+		}
+	}(notification)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Cleaner unassigned"})
 }
 
+// ConfirmCompletion — получаем clientID из заказа и отправляем уведомление
 func (h *OrderHandler) ConfirmCompletion(c *gin.Context) {
 	id, err := primitive.ObjectIDFromHex(c.Param("id"))
 	if err != nil {
@@ -175,8 +344,35 @@ func (h *OrderHandler) ConfirmCompletion(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	// invalidate cache
 	h.clearCache(c.Request.Context())
+
+	order, err := h.service.GetOrderByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	clientID := order.ClientID
+
+	notification := utils.NotificationRequest{
+		UserID:       clientID,
+		Role:         "user",
+		Title:        "Уборка завершена",
+		Message:      fmt.Sprintf("Уборка по заказу #%s успешно завершена. Оцените работу клинера!", id.Hex()),
+		Type:         "cleaning_completed",
+		DeliveryType: "push",
+		Metadata: map[string]string{
+			"order_id": id.Hex(),
+		},
+	}
+	go func(n utils.NotificationRequest) {
+		ctxNotify, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := utils.SendNotification(ctxNotify, h.cfg, n); err != nil {
+			log.Printf("[OrderHandler] failed to send notification: %v\n", err)
+		}
+	}(notification)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Order marked as completed"})
 }
 
