@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"fmt"
+	"go.mongodb.org/mongo-driver/mongo"
 	"log"
 	"net/http"
 	"time"
@@ -47,16 +48,36 @@ func NewOrderHandler(service OrderService, rdb *redis.Client, cfg *config.Config
 	return &OrderHandler{service: service, rdb: rdb, cfg: cfg}
 }
 
+func (h *OrderHandler) GetOrderByIDHTTP(c *gin.Context) {
+	idHex := c.Param("id")
+	id, err := primitive.ObjectIDFromHex(idHex)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid order ID"})
+		return
+	}
+	order, err := h.service.GetOrderByID(c.Request.Context(), id)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch order"})
+		return
+	}
+	// просто вернём всё, что модель Order держит, включая total_price
+	c.JSON(http.StatusOK, order)
+}
+
 func (h *OrderHandler) HandlePaymentNotification(c *gin.Context) {
 	var note struct {
-		OrderID string `json:"order_id"`
-		Status  string `json:"status"`
+		EntityID string `json:"entity_id"`
+		Status   string `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&note); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
 		return
 	}
-	if err := h.service.UpdatePaymentStatus(c.Request.Context(), note.OrderID, note.Status); err != nil {
+	if err := h.service.UpdatePaymentStatus(c.Request.Context(), note.EntityID, note.Status); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

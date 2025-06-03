@@ -43,14 +43,10 @@ func main() {
 	orderClient := utils.NewOrderClient(cfg.OrderServiceURL)
 	paymentClient := utils.NewPaymentClient(cfg.PaymentServiceURL)
 
-	subService := services.NewSubscriptionService(
-		repo,
-		orderClient,
-		paymentClient,
-	)
+	subService := services.NewSubscriptionService(repo, orderClient, paymentClient)
 
 	// 4. Обработчики
-	subHandler := handler.NewSubscriptionHandler(subService)
+	subHandler := handler.NewSubscriptionHandler(subService, orderClient, paymentClient)
 
 	// 5. Cron-задача авто-заказов по подписке
 	go utils.StartSubscriptionScheduler(ctx, subService.ProcessDailyOrders)
@@ -68,6 +64,7 @@ func main() {
 	{
 		api.POST("", subHandler.Create)
 		api.POST("/extend/:id", subHandler.Extend)
+		api.GET("/:id", subHandler.GetSubscriptionByIDHTTP)
 		api.GET("/my", subHandler.GetMy)
 		api.GET("", subHandler.GetAll)
 		api.PUT("/:id", subHandler.Update)

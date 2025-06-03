@@ -8,20 +8,24 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"log"
 	"net/http"
 	"time"
 )
 
 type SubscriptionHandler struct {
-	service SubscriptionService
+	service       SubscriptionService
+	orderClient   *utils.OrderServiceClient
+	paymentClient *utils.PaymentServiceClient
 }
 
 type SubscriptionService interface {
-	Extend(ctx context.Context, id primitive.ObjectID, extraCleanings int) error
-	PayForExtension(ctx context.Context, id primitive.ObjectID, extraDays int) error
 	Create(ctx context.Context, sub *models.Subscription) error
+	Extend(ctx context.Context, id primitive.ObjectID, extraCleanings int) error
+	PayForExtension(ctx context.Context, id primitive.ObjectID, extraDays int, authHeader string) error
 	ProcessDailyOrders(ctx context.Context)
-	Update(ctx context.Context, id primitive.ObjectID, update bson.M) error
+	Update(ctx context.Context, id primitive.ObjectID, update primitive.M) error
 	Cancel(ctx context.Context, id primitive.ObjectID) error
 	GetAll(ctx context.Context) ([]models.Subscription, error)
 	GetByClient(ctx context.Context, clientIDHex string) ([]models.Subscription, error)
@@ -31,51 +35,94 @@ type SubscriptionService interface {
 	GetByID(ctx context.Context, id primitive.ObjectID) (*models.Subscription, error)
 }
 
-func NewSubscriptionHandler(s SubscriptionService) *SubscriptionHandler {
-	return &SubscriptionHandler{service: s}
+func NewSubscriptionHandler(
+	svc SubscriptionService,
+	orderClient *utils.OrderServiceClient,
+	paymentClient *utils.PaymentServiceClient,
+) *SubscriptionHandler {
+	return &SubscriptionHandler{
+		service:       svc,
+		orderClient:   orderClient,
+		paymentClient: paymentClient,
+	}
 }
 
-// POST /api/subscriptions
+func (h *SubscriptionHandler) GetSubscriptionByIDHTTP(c *gin.Context) {
+	idHex := c.Param("id")
+	id, err := primitive.ObjectIDFromHex(idHex)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid subscription ID"})
+		return
+	}
+	sub, err := h.service.GetByID(c.Request.Context(), id)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch subscription"})
+		return
+	}
+	c.JSON(http.StatusOK, sub)
+}
+
 func (h *SubscriptionHandler) Create(c *gin.Context) {
-	// 1. Привязка JSON-параметров
 	var in struct {
 		OrderID    primitive.ObjectID `json:"order_id"     binding:"required"`
 		StartDate  time.Time          `json:"start_date"   binding:"required"`
 		EndDate    time.Time          `json:"end_date"     binding:"required"`
 		DaysOfWeek []string           `json:"days_of_week" binding:"required,dive,oneof=Mon Tue Wed Thu Fri Sat Sun"`
-		Price      float64            `json:"price"        binding:"required,gt=0"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 2. Получаем userId из JWT (строка), конвертим в ObjectID
 	userIDHex := c.GetString("userId")
 	userID, err := primitive.ObjectIDFromHex(userIDHex)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user ID in token"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
 		return
 	}
 
-	// 3. Формируем модель подписки
-	sub := models.Subscription{
-		OrderID:         in.OrderID,
-		UserID:          userID,
-		StartDate:       in.StartDate,
-		EndDate:         in.EndDate,
-		DaysOfWeek:      in.DaysOfWeek,
-		Price:           in.Price,
-		NextPlannedDate: &in.StartDate,
+	orderIDHex := in.OrderID.Hex()
+	authHeader := c.GetHeader("Authorization") // "Bearer <JWT>"
+	orderResp, err := h.orderClient.GetOrderByID(c.Request.Context(), orderIDHex, authHeader)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to fetch order: " + err.Error()})
+		return
+	}
+	calculatedPrice := orderResp.TotalPrice
+
+	now := time.Now()
+	sub := &models.Subscription{
+		OrderID:    in.OrderID,
+		UserID:     userID,
+		StartDate:  in.StartDate,
+		EndDate:    in.EndDate,
+		DaysOfWeek: in.DaysOfWeek,
+		Price:      calculatedPrice,
+		Status:     models.StatusActive,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 
-	// 4. Вызываем сервис для сохранения
-	if err := h.service.Create(c.Request.Context(), &sub); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create subscription"})
+	if err := h.service.Create(c.Request.Context(), sub); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 5. Уведомление клиенту о создании подписки
+	hexSubID := sub.ID.Hex()
+
+	log.Printf("[TRACE] About to call ChargeSubscription: subscriptionID=%s, userID=%s, amount=%.2f", hexSubID, userIDHex, calculatedPrice)
+	if err := h.paymentClient.Charge(c.Request.Context(), "order", orderIDHex, userIDHex, authHeader, calculatedPrice); err != nil {
+		log.Printf("[ERROR] ChargeSubscription returned error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "payment failed: " + err.Error()})
+
+		return
+	}
+	log.Printf("[TRACE] ChargeSubscription succeeded for subscriptionID=%s", hexSubID)
+
 	go func() {
 		payload := utils.NotificationPayload{
 			RecipientID:   userIDHex,
@@ -93,8 +140,7 @@ func (h *SubscriptionHandler) Create(c *gin.Context) {
 		_ = utils.SendNotification(context.Background(), payload)
 	}()
 
-	// 6. Возвращаем ID созданной подписки
-	c.JSON(http.StatusCreated, gin.H{"id": sub.ID.Hex()})
+	c.JSON(http.StatusCreated, gin.H{"id": hexSubID})
 }
 
 func (h *SubscriptionHandler) Extend(c *gin.Context) {
@@ -107,33 +153,29 @@ func (h *SubscriptionHandler) Extend(c *gin.Context) {
 		return
 	}
 
-	// 1) получить существующую подписку
 	sub, err := h.service.GetByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
 		return
 	}
 
-	// 2) посчитать, сколько дополнительных уборок появится
 	newCount := countScheduledDays(sub.DaysOfWeek, sub.EndDate.Add(24*time.Hour), req.EndDate)
 	if newCount <= 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "new end_date must be after current end_date"})
 		return
 	}
 
-	// 3) обновить дату окончания
 	if err := h.service.Update(c.Request.Context(), id, bson.M{"end_date": req.EndDate}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to extend subscription"})
 		return
 	}
 
-	// 4) спровоцировать оплату за эти newCount уборок
-	if err := h.service.PayForExtension(c.Request.Context(), id, newCount); err != nil {
-		c.JSON(http.StatusPaymentRequired, gin.H{"error": "payment failed"})
+	authHeader := c.GetHeader("Authorization")
+	if err := h.service.PayForExtension(c.Request.Context(), id, newCount, authHeader); err != nil {
+		c.JSON(http.StatusPaymentRequired, gin.H{"error": "payment failed: " + err.Error()})
 		return
 	}
 
-	// 5. Уведомление клиенту о продлении подписки
 	userIDHex := sub.UserID.Hex()
 	go func() {
 		payload := utils.NotificationPayload{
@@ -149,13 +191,12 @@ func (h *SubscriptionHandler) Extend(c *gin.Context) {
 				"extra_cleanings": newCount,
 			},
 		}
-		_ = utils.SendNotification(context.Background(), payload)
+		_ = utils.SendNotification(c.Request.Context(), payload)
 	}()
 
 	c.JSON(http.StatusOK, gin.H{"message": "subscription extended", "new_cleanings": newCount})
 }
 
-// вспомогательная функция
 func countScheduledDays(daysOfWeek []string, from, to time.Time) int {
 	set := map[string]struct{}{}
 	for _, d := range daysOfWeek {
@@ -193,7 +234,6 @@ func (h *SubscriptionHandler) Update(c *gin.Context) {
 		return
 	}
 
-	// 2) Биндим только days_of_week
 	var req struct {
 		DaysOfWeek []string `json:"days_of_week" binding:"required,dive,oneof=Mon Tue Wed Thu Fri Sat Sun"`
 	}
