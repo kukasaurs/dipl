@@ -216,7 +216,13 @@ func (h *SupportHandler) GetTickets(c *gin.Context) {
 			status = string(models.StatusInProgress)
 		}
 		tickets, err = h.service.GetAllTicketsByStatus(c.Request.Context(), models.TicketStatus(status))
-
+	case "user":
+		// Клиент видит только свои тикеты, с возможной фильтрацией по статусу
+		if status == "" {
+			tickets, err = h.service.GetTicketsForClient(c.Request.Context(), userID)
+		} else {
+			tickets, err = h.service.GetTicketsForUserByStatus(c.Request.Context(), userID, models.TicketStatus(status))
+		}
 	default:
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
