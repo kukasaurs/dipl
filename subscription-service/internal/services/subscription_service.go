@@ -47,9 +47,6 @@ func NewSubscriptionService(
 }
 
 func (s *SubscriptionService) Extend(ctx context.Context, id primitive.ObjectID, extraCleanings int) error {
-	// здесь вы решаете, что для вас «продление»:
-	// либо $inc на какой-то счётчик, либо сдвиг EndDate
-	// пример: увеличить EndDate на extraCleanings дней
 	sub, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
@@ -58,14 +55,24 @@ func (s *SubscriptionService) Extend(ctx context.Context, id primitive.ObjectID,
 	return s.repo.Update(ctx, id, bson.M{"end_date": newEnd})
 }
 
-func (s *SubscriptionService) PayForExtension(ctx context.Context, id primitive.ObjectID, extraDays int) error {
+func (s *SubscriptionService) PayForExtension(ctx context.Context, id primitive.ObjectID, extraDays int, authHeader string) error {
 	sub, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	// amount – целочисленная сумма, как требует ваш мок
-	amount := int64(extraDays)
-	return s.paymentClient.ChargeSubscription(ctx, sub.OrderID.Hex(), sub.UserID.Hex(), amount)
+	for i := 0; i < extraDays; i++ {
+		if err := s.paymentClient.Charge(
+			ctx,
+			"subscription",
+			sub.ID.Hex(),     // EntityID — ID подписки
+			sub.UserID.Hex(), // UserID
+			authHeader,       // JWT
+			sub.Price,        // платим ровно sub.Price (например, 80.0)
+		); err != nil {
+			return fmt.Errorf("payment for extension #%d failed: %w", i+1, err)
+		}
+	}
+	return nil
 }
 
 // Create сохраняет новую подписку.

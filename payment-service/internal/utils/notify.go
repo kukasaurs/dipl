@@ -4,31 +4,35 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
+	"io"
 	"net/http"
 )
 
-type PaymentNotification struct {
-	OrderID string `json:"order_id"`
-	Status  string `json:"status"`
+type NotifyPayload struct {
+	EntityID string `json:"entity_id"`
+	Status   string `json:"status"`
 }
 
-func NotifyOrderService(orderServiceURL, orderID, status string) error {
-	payload := PaymentNotification{OrderID: orderID, Status: status}
-	data, _ := json.Marshal(payload)
+func NotifyURL(client *http.Client, url, entityID, status string) {
+	payload := NotifyPayload{EntityID: entityID, Status: status}
+	b, _ := json.Marshal(payload)
 
-	url := orderServiceURL + "/api/internal/payments/notify"
-	log.Printf("[NOTIFY] sending to %s: %+v", url, payload)
-
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(data))
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(b))
 	if err != nil {
-		return fmt.Errorf("failed to notify order service: %w", err)
+		fmt.Printf("[NotifyURL] Failed to create request: %v\n", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("[NotifyURL] Request error: %v\n", err)
+		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected response from order service: %d", resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		fmt.Printf("[NotifyURL] Unexpected status %d, body: %s\n", resp.StatusCode, string(bodyBytes))
 	}
-	log.Printf("[NOTIFY] success: %s", orderID)
-	return nil
 }

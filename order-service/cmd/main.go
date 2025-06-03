@@ -82,6 +82,7 @@ func main() {
 		orders.POST("/", orderHandler.CreateOrder)
 
 		orders.GET("/my", orderHandler.GetMyOrders)
+		orders.GET("/:id", orderHandler.GetOrderByIDHTTP)
 		orders.PUT("/:id", orderHandler.UpdateOrder)
 		orders.DELETE("/:id", orderHandler.DeleteOrder)
 

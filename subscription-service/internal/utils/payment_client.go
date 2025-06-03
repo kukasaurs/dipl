@@ -1,5 +1,3 @@
-// subscription-service/internal/utils/payment_client.go
-
 package utils
 
 import (
@@ -10,47 +8,53 @@ import (
 	"net/http"
 )
 
-// PaymentServiceClient умеет шлёпать запрос в мок-Payment Service на /payments
-type PaymentServiceClient struct {
-	URL string // например "http://payment-service:8005"
+type PaymentRequest struct {
+	EntityType string  `json:"entity_type"`
+	EntityID   string  `json:"entity_id"`
+	UserID     string  `json:"user_id"`
+	Amount     float64 `json:"amount"`
 }
 
-// NewPaymentClient создаёт клиента.
+type PaymentServiceClient struct {
+	URL string
+}
+
 func NewPaymentClient(url string) *PaymentServiceClient {
 	return &PaymentServiceClient{URL: url}
 }
 
-// ChargeSubscription шлёт POST /payments с {order_id, user_id, amount}
-func (c *PaymentServiceClient) ChargeSubscription(ctx context.Context, orderID, userID string, amount int64) error {
-	payload := struct {
-		OrderID string `json:"order_id"`
-		UserID  string `json:"user_id"`
-		Amount  int64  `json:"amount"`
-	}{
-		OrderID: orderID,
-		UserID:  userID,
-		Amount:  amount,
+func (c *PaymentServiceClient) Charge(ctx context.Context, entityType string, entityID string, userID string, authHeader string, amount float64) error {
+	body := PaymentRequest{
+		EntityType: entityType,
+		EntityID:   entityID,
+		UserID:     userID,
+		Amount:     amount,
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+
+		return fmt.Errorf("marshal payment request: %w", err)
 	}
 
-	data, err := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL+"/payments", bytes.NewBuffer(payload))
 	if err != nil {
-		return fmt.Errorf("marshal payment payload: %w", err)
-	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL+"/payments", bytes.NewReader(data))
-	if err != nil {
 		return fmt.Errorf("build payment request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", authHeader)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("send payment request: %w", err)
+
+		return fmt.Errorf("call payment service: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+
 		return fmt.Errorf("payment service returned status %d", resp.StatusCode)
 	}
+
 	return nil
 }

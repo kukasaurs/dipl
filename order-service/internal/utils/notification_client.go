@@ -16,7 +16,7 @@ type NotificationRequest struct {
 	Title        string            `json:"title"`
 	Message      string            `json:"message"`
 	Type         string            `json:"type"`
-	DeliveryType string            `json:"delivery_type"` // push | email | both
+	DeliveryType string            `json:"delivery_type"`
 	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 
