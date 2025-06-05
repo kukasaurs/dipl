@@ -1,4 +1,3 @@
-// subscription-service/internal/utils/order_client.go
 package utils
 
 import (
@@ -20,6 +19,8 @@ type ServiceDetail struct {
 type OrderResponse struct {
 	ID             string          `json:"id"`
 	ClientID       string          `json:"client_id"`
+	Address        string          `json:"address"`
+	ServiceType    string          `json:"service_type"`
 	ServiceIDs     []string        `json:"service_ids"`
 	ServiceDetails []ServiceDetail `json:"service_details"`
 	TotalPrice     float64         `json:"total_price"`
@@ -35,23 +36,65 @@ func NewOrderClient(url string) *OrderServiceClient {
 	return &OrderServiceClient{URL: url}
 }
 
-func (c *OrderServiceClient) CreateOrderFromSubscription(ctx context.Context, sub models.Subscription) error {
-	body := map[string]interface{}{
-		"order_id":        sub.OrderID.Hex(),
-		"user_id":         sub.UserID.Hex(),
-		"source":          "subscription",
-		"subscription_id": sub.ID.Hex(),
-		"date":            time.Now().Format("2006-01-02"),
+func (c *OrderServiceClient) CreateOrderFromSubscription(ctx context.Context, sub models.Subscription, authHeader string) error {
+	// 1) Сначала получаем оригинальный заказ, чтобы узнать address/service_ids и т.д.
+	//    Из OrderResponse должно быть видно, по какому адресу и на какие услуги
+	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.URL+"/orders/"+sub.OrderID.Hex(), nil)
+	if err != nil {
+		return fmt.Errorf("build GET order request: %w", err)
+	}
+	getReq.Header.Set("Authorization", authHeader)
+
+	getResp, err := http.DefaultClient.Do(getReq)
+	if err != nil {
+		return fmt.Errorf("failed to GET original order: %w", err)
+	}
+	defer getResp.Body.Close()
+
+	if getResp.StatusCode != http.StatusOK {
+		return fmt.Errorf("order service returned %d on GET %s", getResp.StatusCode, c.URL+"/orders/"+sub.OrderID.Hex())
 	}
 
-	jsonData, _ := json.Marshal(body)
+	var original OrderResponse
+	if err := json.NewDecoder(getResp.Body).Decode(&original); err != nil {
+		return fmt.Errorf("decode original order response: %w", err)
+	}
 
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.URL+"/orders", bytes.NewBuffer(jsonData))
-	req.Header.Set("Content-Type", "application/json")
+	if sub.NextPlannedDate == nil {
+		return fmt.Errorf("subscription.NextPlannedDate is nil")
+	}
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil || resp.StatusCode >= 300 {
-		return fmt.Errorf("failed to create order from subscription")
+	// 2) Формируем JSON для нового заказа на базе оригинального
+	newBody := map[string]interface{}{
+		"address":      original.Address,
+		"service_type": original.ServiceType,
+		"service_ids":  original.ServiceIDs,
+		// Берём дату из подписки (NextPlannedDate) и сериализуем в RFC3339
+		"date":    sub.NextPlannedDate.Format(time.RFC3339),
+		"status":  "prepaid",                          // фиксируем prepaid
+		"comment": "Автоматический заказ по подписке", // любой текст
+	}
+	jsonData, err := json.Marshal(newBody)
+	if err != nil {
+		return fmt.Errorf("marshal new order body: %w", err)
+	}
+
+	// 3) Отправляем POST /orders
+	postReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL+"/orders", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("build POST order request: %w", err)
+	}
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq.Header.Set("Authorization", authHeader)
+
+	postResp, err := http.DefaultClient.Do(postReq)
+	if err != nil {
+		return fmt.Errorf("failed to POST new order: %w", err)
+	}
+	defer postResp.Body.Close()
+
+	if postResp.StatusCode >= 300 {
+		return fmt.Errorf("order service returned %d on POST /orders", postResp.StatusCode)
 	}
 	return nil
 }

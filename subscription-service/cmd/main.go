@@ -43,13 +43,9 @@ func main() {
 	orderClient := utils.NewOrderClient(cfg.OrderServiceURL)
 	paymentClient := utils.NewPaymentClient(cfg.PaymentServiceURL)
 
-	subService := services.NewSubscriptionService(repo, orderClient, paymentClient)
-
+	subService := services.NewSubscriptionService(repo, paymentClient, orderClient)
 	// 4. Обработчики
 	subHandler := handler.NewSubscriptionHandler(subService, orderClient, paymentClient)
-
-	// 5. Cron-задача авто-заказов по подписке
-	go utils.StartSubscriptionScheduler(ctx, subService.ProcessDailyOrders)
 
 	// 6. Настройка Gin
 	router := gin.New()
@@ -70,6 +66,8 @@ func main() {
 		api.PUT("/:id", subHandler.Update)
 		api.DELETE("/:id", subHandler.Cancel)
 	}
+
+	utils.StartScheduler(subService)
 
 	// 8. HTTP-сервер
 	server := &http.Server{

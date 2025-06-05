@@ -15,6 +15,7 @@ const (
 	StatusCompleted OrderStatus = "completed"
 	StatusCanceled  OrderStatus = "canceled"
 	StatusPaid      OrderStatus = "paid"
+	StatusPrePaid   OrderStatus = "prepaid"
 )
 
 type Order struct {

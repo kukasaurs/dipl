@@ -64,7 +64,9 @@ func (s *orderService) CreateOrder(ctx context.Context, order *models.Order) err
 		return err
 	}
 	s.enrichWithServiceDetails(ctx, order)
-	order.Status = models.StatusPending
+	if order.Status != models.StatusPrePaid {
+		order.Status = models.StatusPending
+	}
 
 	if err := s.repo.Create(ctx, order); err != nil {
 		return err
@@ -313,7 +315,14 @@ func (s *orderService) UpdatePaymentStatus(ctx context.Context, orderID string, 
 		return fmt.Errorf("order not found: %w", err)
 	}
 
+	if order.Status == models.StatusPrePaid {
+		return nil
+	}
+
 	order.Status = models.StatusPaid
+	if err := s.repo.Update(ctx, order); err != nil {
+		return fmt.Errorf("failed to update status: %w", err)
+	}
 	if err := s.repo.Update(ctx, order); err != nil {
 		return fmt.Errorf("failed to update status: %w", err)
 	}

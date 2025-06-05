@@ -37,23 +37,30 @@ func (r *SubscriptionRepository) Create(ctx context.Context, s *models.Subscript
 	return nil
 }
 
-func (r *SubscriptionRepository) Update(ctx context.Context, id primitive.ObjectID, update bson.M) error {
-	update["updated_at"] = time.Now()
-	_, err := r.col.UpdateByID(ctx, id, bson.M{"$set": update})
+func (r *SubscriptionRepository) Update(ctx context.Context, id primitive.ObjectID, update primitive.M) error {
+	// В любом случае обновляем UpdatedAt
+	update["updated_at"] = time.Now().UTC()
+	_, err := r.col.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": update})
 	return err
 }
 
 func (r *SubscriptionRepository) GetActiveSubscriptions(ctx context.Context) ([]models.Subscription, error) {
-	filter := bson.M{"status": models.StatusActive, "remaining_cleanings": bson.M{"$gt": 0}}
+	now := time.Now().UTC()
+	filter := bson.M{
+		"status":   models.StatusActive,
+		"end_date": bson.M{"$gte": now},
+	}
 	cursor, err := r.col.Find(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
-	var result []models.Subscription
-	if err := cursor.All(ctx, &result); err != nil {
+	defer cursor.Close(ctx)
+
+	var subs []models.Subscription
+	if err := cursor.All(ctx, &subs); err != nil {
 		return nil, err
 	}
-	return result, nil
+	return subs, nil
 }
 
 func (r *SubscriptionRepository) UpdateAfterOrder(ctx context.Context, id primitive.ObjectID, nextDate time.Time) error {
@@ -69,14 +76,12 @@ func (r *SubscriptionRepository) SetExpired(ctx context.Context, id primitive.Ob
 }
 
 func (r *SubscriptionRepository) GetByClient(ctx context.Context, clientIDHex string) ([]models.Subscription, error) {
-	// 1) Конвертируем строку в ObjectID
 	clientID, err := primitive.ObjectIDFromHex(clientIDHex)
 	if err != nil {
 		return nil, err
 	}
-
-	// 2) Ищем все документы, где user_id == clientID
-	cursor, err := r.col.Find(ctx, bson.M{"user_id": clientID})
+	filter := bson.M{"user_id": clientID}
+	cursor, err := r.col.Find(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -91,46 +96,83 @@ func (r *SubscriptionRepository) GetByClient(ctx context.Context, clientIDHex st
 
 func (r *SubscriptionRepository) GetByID(ctx context.Context, id primitive.ObjectID) (*models.Subscription, error) {
 	var sub models.Subscription
-	err := r.col.FindOne(ctx, bson.M{"_id": id}).Decode(&sub)
-	if err != nil {
+	if err := r.col.FindOne(ctx, bson.M{"_id": id}).Decode(&sub); err != nil {
 		return nil, err
 	}
 	return &sub, nil
 }
+
 func (r *SubscriptionRepository) GetAll(ctx context.Context) ([]models.Subscription, error) {
 	cursor, err := r.col.Find(ctx, bson.M{})
 	if err != nil {
 		return nil, err
 	}
+	defer cursor.Close(ctx)
+
 	var subs []models.Subscription
 	if err := cursor.All(ctx, &subs); err != nil {
 		return nil, err
 	}
 	return subs, nil
 }
+
 func (r *SubscriptionRepository) FindExpiringOn(ctx context.Context, targetDate time.Time) ([]models.Subscription, error) {
-	cursor, err := r.col.Find(ctx, bson.M{
-		"next_planned_date": targetDate,
-		"status":            models.StatusActive,
-	})
+	dayStart := time.Date(targetDate.Year(), targetDate.Month(), targetDate.Day(), 0, 0, 0, 0, time.UTC)
+	dayEnd := dayStart.AddDate(0, 0, 1).Add(-time.Nanosecond)
+	filter := bson.M{
+		"end_date": bson.M{
+			"$gte": dayStart,
+			"$lte": dayEnd,
+		},
+	}
+	cursor, err := r.col.Find(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
+	defer cursor.Close(ctx)
+
 	var subs []models.Subscription
-	err = cursor.All(ctx, &subs)
-	return subs, err
+	if err := cursor.All(ctx, &subs); err != nil {
+		return nil, err
+	}
+	return subs, nil
 }
 
 func (r *SubscriptionRepository) FindExpired(ctx context.Context, before time.Time) ([]models.Subscription, error) {
-	cursor, err := r.col.Find(ctx, bson.M{
-		"next_planned_date":   bson.M{"$lte": before},
-		"status":              models.StatusActive,
-		"remaining_cleanings": bson.M{"$lte": 0},
-	})
+	filter := bson.M{"end_date": bson.M{"$lt": before}}
+	cursor, err := r.col.Find(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
+	defer cursor.Close(ctx)
+
 	var subs []models.Subscription
-	err = cursor.All(ctx, &subs)
-	return subs, err
+	if err := cursor.All(ctx, &subs); err != nil {
+		return nil, err
+	}
+	return subs, nil
+}
+
+func (r *SubscriptionRepository) FindDue(ctx context.Context, before time.Time) ([]models.Subscription, error) {
+	filter := bson.M{
+		"status":            models.StatusActive,
+		"next_planned_date": bson.M{"$lte": before},
+	}
+	cursor, err := r.col.Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var subs []models.Subscription
+	if err := cursor.All(ctx, &subs); err != nil {
+		return nil, err
+	}
+	return subs, nil
+}
+
+func (r *SubscriptionRepository) UpdateStatus(ctx context.Context, id primitive.ObjectID, status models.SubscriptionStatus) error {
+	update := bson.M{"status": status, "updated_at": time.Now().UTC()}
+	_, err := r.col.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": update})
+	return err
 }

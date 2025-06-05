@@ -33,7 +33,7 @@ func main() {
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	log.Printf("🪙 Payment Service is running on %s …\n", addr)
+	log.Printf("Payment Service is running on %s …\n", addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Payment Service failed: %v", err)
 	}
