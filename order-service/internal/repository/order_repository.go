@@ -180,3 +180,27 @@ func (r *orderRepository) CountOrders(ctx context.Context, filter interface{}) (
 func (r *orderRepository) Aggregate(ctx context.Context, pipeline []bson.M) (*mongo.Cursor, error) {
 	return r.collection.Aggregate(ctx, pipeline)
 }
+func (r *orderRepository) FindByCleaner(ctx context.Context, cleanerID primitive.ObjectID) ([]models.Order, error) {
+	filter := bson.M{
+		"cleaner_id": cleanerID.Hex(),
+	}
+	cursor, err := r.collection.Find(ctx, filter)
+
+	if err != nil {
+		return nil, err
+	}
+	var orders []models.Order
+	if err := cursor.All(ctx, &orders); err != nil {
+		return nil, err
+	}
+	return orders, nil
+}
+
+// CountCompletedByCleaner возвращает кол-во заказов со статусом "completed", в которых участвует этот cleanerID.
+func (r *orderRepository) CountCompletedByCleaner(ctx context.Context, cleanerID primitive.ObjectID) (int64, error) {
+	filter := bson.M{
+		"cleaner_id": cleanerID.Hex(),
+		"status":     models.StatusCompleted,
+	}
+	return r.collection.CountDocuments(ctx, filter)
+}

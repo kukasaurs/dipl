@@ -10,7 +10,7 @@ type SubscriptionStatus string
 const (
 	StatusActive   SubscriptionStatus = "active"
 	StatusExpired  SubscriptionStatus = "expired"
-	StatusCanceled SubscriptionStatus = "canceled"
+	StatusCanceled SubscriptionStatus = "cancelled"
 )
 
 type Frequency string

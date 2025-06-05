@@ -33,6 +33,9 @@ type OrderRepository interface {
 	IsCleanerBusy(ctx context.Context, cleanerID string, date time.Time) (bool, error)
 	CountOrders(ctx context.Context, filter interface{}) (int64, error)
 	Aggregate(ctx context.Context, pipeline []bson.M) (*mongo.Cursor, error)
+
+	FindByCleaner(ctx context.Context, cleanerID primitive.ObjectID) ([]models.Order, error)
+	CountCompletedByCleaner(ctx context.Context, cleanerID primitive.ObjectID) (int64, error)
 }
 
 type orderService struct {
@@ -327,4 +330,62 @@ func (s *orderService) UpdatePaymentStatus(ctx context.Context, orderID string, 
 		return fmt.Errorf("failed to update status: %w", err)
 	}
 	return nil
+}
+
+func (s *orderService) GetOrdersForCleaner(ctx context.Context, cleanerID primitive.ObjectID) ([]models.Order, error) {
+	return s.repo.FindByCleaner(ctx, cleanerID)
+}
+
+func (s *orderService) GetOrderForCleaner(
+	ctx context.Context,
+	orderID primitive.ObjectID,
+	cleanerID primitive.ObjectID,
+) (*models.Order, error) {
+	// 1) Сначала берём заказ по его _id
+	order, err := s.repo.GetByID(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	for _, cid := range order.CleanerID {
+
+		if cid == cleanerID.Hex() {
+			return order, nil
+		}
+	}
+	return nil, err
+}
+
+func (s *orderService) FinishOrder(
+	ctx context.Context,
+	orderID primitive.ObjectID,
+	cleanerID primitive.ObjectID,
+	photoURL string,
+) error {
+	order, err := s.repo.GetByID(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	allowed := false
+	for _, cid := range order.CleanerID {
+
+		if cid == cleanerID.Hex() {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return err
+	}
+
+	// 3) Обновляем поля в самом объекте order:
+	order.Status = models.StatusCompleted // ставим "completed"
+	order.PhotoURL = &photoURL            // сохраняем ссылку на загруженное фото
+	order.UpdatedAt = time.Now().UTC()    // фиксим время завершения
+	// UpdatedAt будет поправлено в самом Update-методе репозитория:
+	return s.repo.Update(ctx, order)
+}
+
+func (s *orderService) CountJobsDone(ctx context.Context, cleanerID primitive.ObjectID) (int64, error) {
+	// В вашем repo есть метод CountCompletedByCleaner
+	return s.repo.CountCompletedByCleaner(ctx, cleanerID)
 }
