@@ -16,10 +16,10 @@ type NotificationHandler struct {
 type NotificationService interface {
 	SendPush(req models.PushNotificationRequest) error
 	SendNotification(ctx context.Context, notification *models.Notification) error
-	ProcessEvent(ctx context.Context, channel string, payload []byte) error
+	ProcessEvent(ctx context.Context, payload []byte) error
 	GetNotifications(ctx context.Context, userID string, limit, offset int64) ([]models.Notification, error)
 	MarkAsRead(ctx context.Context, id primitive.ObjectID) error
-	StartRedisSubscribers(ctx context.Context)
+	StartRedisSubscriber(ctx context.Context)
 }
 
 type SendNotificationRequest struct {

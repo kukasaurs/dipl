@@ -4,9 +4,7 @@ import (
 	"cleaning-app/review-media-service/internal/config"
 	"cleaning-app/review-media-service/internal/models"
 	"cleaning-app/review-media-service/internal/repository"
-	"cleaning-app/review-media-service/internal/utils"
 	"context"
-	"time"
 )
 
 type ReviewService struct {
@@ -27,21 +25,7 @@ func (s *ReviewService) GetReviewsByTarget(ctx context.Context, targetID string)
 }
 
 func (s *ReviewService) ScheduleReviewRequest(userID string, orderID string) {
-	go func() {
-		time.Sleep(1 * time.Hour)
-		req := utils.NotificationRequest{
-			UserID:       userID,
-			Role:         "client",
-			Title:        "Как вам уборка?",
-			Message:      "Оцените работу клинера. Нам важно ваше мнение!",
-			Type:         "review_request",
-			DeliveryType: "push",
-			Metadata: map[string]string{
-				"order_id": orderID,
-			},
-		}
-		_ = utils.SendNotification(context.Background(), s.cfg, req)
-	}()
+
 }
 func (s *ReviewService) ReviewExists(ctx context.Context, orderID, reviewerID string) (bool, error) {
 	return s.repo.ExistsByOrderAndReviewer(ctx, orderID, reviewerID)

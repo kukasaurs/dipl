@@ -13,6 +13,7 @@ type Config struct {
 	AuthServiceURL         string
 	ServerPort             string
 	UserServiceURL         string
+	NotifiServiceURL       string
 }
 
 func LoadConfig() (*Config, error) {
@@ -28,5 +29,6 @@ func LoadConfig() (*Config, error) {
 		AuthServiceURL:         os.Getenv("AUTH_SERVICE_URL"),
 		ServerPort:             os.Getenv("SERVER_PORT"),
 		UserServiceURL:         os.Getenv("USER_SERVICE_URL"),
+		NotifiServiceURL:       os.Getenv("NOTIFI_SERVICE_URL"),
 	}, nil
 }

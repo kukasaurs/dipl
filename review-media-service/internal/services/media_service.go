@@ -3,7 +3,6 @@ package services
 import (
 	"cleaning-app/review-media-service/internal/config"
 	"cleaning-app/review-media-service/internal/models"
-	"cleaning-app/review-media-service/internal/utils"
 	"context"
 	"github.com/minio/minio-go/v7"
 	_ "io"
@@ -41,18 +40,7 @@ func (s *MediaService) UploadMedia(ctx context.Context, orderID, uploaderID stri
 		PreviewURL: url, // placeholder
 	}
 	_ = s.repo.Save(ctx, media)
-	_ = utils.SendNotification(ctx, s.cfg, utils.NotificationRequest{
-		UserID:       "manager", // можно заменить на ID менеджера, если есть
-		Role:         "manager",
-		Title:        "Фотоотчёт загружен",
-		Message:      "Клинер завершил уборку и загрузил фотоотчёт.",
-		Type:         "report_uploaded",
-		DeliveryType: "push",
-		Metadata: map[string]string{
-			"order_id":    orderID,
-			"uploader_id": uploaderID,
-		},
-	})
+
 	return url, nil
 }
 func (s *MediaService) GetMediaByOrder(ctx context.Context, orderID string) ([]models.Media, error) {
