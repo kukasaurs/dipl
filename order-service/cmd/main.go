@@ -103,7 +103,12 @@ func main() {
 		protectedCleaner.Use(utils.RequireRoles("cleaner"))
 		{
 			protectedCleaner.PUT("/:id/confirm", orderHandler.ConfirmCompletion)
+			protectedCleaner.GET("/orders", orderHandler.GetCleanerOrders)
+			protectedCleaner.GET("/orders/:id", orderHandler.GetCleanerOrder)
+			protectedCleaner.GET("/:id/jobs_done", orderHandler.GetJobsDone)
+			//protectedCleaner.POST("/:id/finish", orderHandler.FinishOrder)
 		}
+
 	}
 	router.POST("/api/internal/payments/notify", orderHandler.HandlePaymentNotification)
 
