@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 
 	"cleaning-app/support-service/internal/models"
 	"cleaning-app/support-service/internal/utils"
@@ -63,22 +64,30 @@ func (s *SupportService) UpdateTicketStatus(ctx context.Context, id primitive.Ob
 
 // AddMessage сохраняет новое сообщение в тикете и рассылает нотификацию.
 func (s *SupportService) AddMessage(ctx context.Context, msg *models.Message) error {
+
+	ticket, err := s.repo.GetTicketByID(ctx, msg.TicketID)
+	if err != nil {
+		return err
+	}
+	if ticket.Status == models.StatusClosed {
+		return errors.New("ticket is closed")
+	}
+
+	// 2. Сохраняем сообщение
 	if err := s.repo.AddMessage(ctx, msg); err != nil {
 		return err
 	}
 
-	// Определяем, кому уведомление:
+	// 4. Отправляем уведомление
 	var targetUserID string
-	if msg.SenderRole == "client" {
-		// клиент пишет → уведомляем менеджера
-		targetUserID = "manager"
-	} else {
-		// менеджер/админ пишет → уведомляем клиента
-		ticket, _ := s.repo.GetTicketByID(ctx, msg.TicketID)
-		targetUserID = ticket.ClientID
+	switch msg.SenderRole {
+	case "client", "cleaner":
+		targetUserID = "manager" // групповой канал менеджеров
+	default: // manager или admin
+		targetUserID = ticket.ClientID // автор тикета
 	}
-
 	_ = s.notifier.SendMessageNotification(ctx, targetUserID, msg.Text)
+
 	return nil
 }
 

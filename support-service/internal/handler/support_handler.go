@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -119,6 +120,7 @@ func (h *SupportHandler) UpdateTicketStatus(c *gin.Context) {
 
 // POST /support/tickets/:id/messages
 func (h *SupportHandler) SendMessage(c *gin.Context) {
+
 	hexID := c.Param("id")
 	ticketID, err := primitive.ObjectIDFromHex(hexID)
 	if err != nil {
@@ -140,6 +142,10 @@ func (h *SupportHandler) SendMessage(c *gin.Context) {
 		Timestamp:  time.Now(),
 	}
 	if err := h.service.AddMessage(c.Request.Context(), msg); err != nil {
+		if errors.Is(err, errors.New("ticket is closed")) {
+			c.JSON(http.StatusConflict, gin.H{"error": "ticket closed"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -204,12 +210,11 @@ func (h *SupportHandler) GetTickets(c *gin.Context) {
 
 	switch role {
 	case "manager":
-		// менеджер видит только свои тикеты в статусе open (новые)
 		if status == "" {
 			status = string(models.StatusOpen)
 		}
-		tickets, err = h.service.GetTicketsForUserByStatus(c.Request.Context(), userID, models.TicketStatus(status))
-
+		tickets, err = h.service.GetAllTicketsByStatus(
+			c.Request.Context(), models.TicketStatus(status))
 	case "admin":
 		// админ видит все тикеты, по умолчанию in_progress (эскалированные)
 		if status == "" {
@@ -223,6 +228,12 @@ func (h *SupportHandler) GetTickets(c *gin.Context) {
 		} else {
 			tickets, err = h.service.GetTicketsForUserByStatus(c.Request.Context(), userID, models.TicketStatus(status))
 		}
+	case "cleaner":
+		if status == "" {
+			status = string(models.StatusOpen)
+		}
+		tickets, err = h.service.GetAllTicketsByStatus(
+			c.Request.Context(), models.TicketStatus(status))
 	default:
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
