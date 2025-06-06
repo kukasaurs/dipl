@@ -21,6 +21,7 @@ type User struct {
 	ResetRequired bool               `bson:"reset_required"`
 	Ratings       []int              `bson:"ratings" validate:"omitempty"`
 	AverageRating float64            `bson:"average_rating" validate:"omitempty"`
+	DeviceToken   string             `json:"device_token"`
 }
 
 func (u *User) HashPassword() error {

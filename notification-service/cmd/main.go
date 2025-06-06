@@ -54,7 +54,8 @@ func main() {
 		log.Println("[SHUTDOWN] Closing Redis connection...")
 		return rdb.Close()
 	})
-	// Подключение к Firebase Cloud Messaging (FCM)
+
+	// 5. Подключение к Firebase Cloud Messaging (FCM)
 	fcm, err := push.NewFCMClient(cfg.FirebaseCredentials)
 	if err != nil {
 		log.Printf("Ошибка создания FCM клиента: %v", err)
@@ -64,15 +65,15 @@ func main() {
 		log.Println("FCM client successfully initialized")
 	}
 
-	// 5. Инициализация слоев
+	// 6. Инициализация слоев
 	repo := repository.NewNotificationRepository(db)
 	notificationService := services.NewNotificationService(repo, rdb, fcm)
 	notificationHandler := handler.NewNotificationHandler(notificationService)
 
-	// 6. Запуск подписки на Redis
-	go notificationService.StartRedisSubscribers(ctx)
+	// 7. Запуск подписки на единый Redis-канал (новая версия)
+	go notificationService.StartRedisSubscriber(ctx)
 
-	// 7. Инициализация маршрутов
+	// 8. Инициализация маршрутов
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 	router.RedirectTrailingSlash = false
@@ -85,13 +86,12 @@ func main() {
 		// Защищённые маршруты
 		secured := api.Group("", utils.AuthMiddleware(cfg.AuthServiceURL))
 		{
-			// GET /notifications and /notifications/
 			secured.GET("", notificationHandler.GetNotifications)
 			secured.PUT(":id/read", notificationHandler.MarkAsRead)
 		}
 	}
 
-	// 8. Запуск HTTP сервера
+	// 9. Запуск HTTP сервера
 	server := &http.Server{
 		Addr:    cfg.ServerPort,
 		Handler: router,
@@ -109,6 +109,6 @@ func main() {
 		return server.Shutdown(ctx)
 	})
 
-	// Ожидаем завершения
+	// 10. Ожидание завершения
 	select {}
 }

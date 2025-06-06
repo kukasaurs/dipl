@@ -4,7 +4,6 @@ import (
 	"cleaning-app/subscription-service/internal/models"
 	"cleaning-app/subscription-service/internal/utils"
 	"context"
-	"fmt"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -160,6 +159,16 @@ func (h *SubscriptionHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// 8) отправляем уведомление пользователю о создании подписки
+	go func() {
+		_ = utils.SendNotificationEvent(context.Background(), utils.NotificationEvent{
+			UserID:    userID.Hex(),
+			Role:      "client",
+			Type:      "subscription_updated", // или создай тип "subscription_created", если нужно различать
+			ExtraData: map[string]string{"subscription_id": sub.ID.Hex()},
+		})
+	}()
+
 	// 8) отвечаем новым объектом
 	c.JSON(http.StatusCreated, sub)
 }
@@ -197,25 +206,17 @@ func (h *SubscriptionHandler) Extend(c *gin.Context) {
 		return
 	}
 
-	userIDHex := sub.UserID.Hex()
-	go func() {
-		payload := utils.NotificationPayload{
-			RecipientID:   userIDHex,
-			RecipientRole: "client",
-			Title:         "Подписка продлена",
-			Body:          "Ваша подписка продлена до " + req.EndDate.Format("2006-01-02") + ". Дополнительных уборок: " + fmt.Sprintf("%d", newCount) + ".",
-			Type:          "subscription_extended",
-			Channel:       "email",
-			Data: map[string]interface{}{
-				"subscription_id": sub.ID.Hex(),
-				"new_end_date":    req.EndDate.Format(time.RFC3339),
-				"extra_cleanings": newCount,
-			},
-		}
-		_ = utils.SendNotification(c.Request.Context(), payload)
-	}()
-
 	c.JSON(http.StatusOK, gin.H{"message": "subscription extended", "new_cleanings": newCount})
+
+	// отправляем уведомление пользователю о продлении
+	go func() {
+		_ = utils.SendNotificationEvent(context.Background(), utils.NotificationEvent{
+			UserID:    sub.UserID.Hex(),
+			Role:      "client",
+			Type:      "subscription_updated", // или "subscription_extended"
+			ExtraData: map[string]string{"subscription_id": sub.ID.Hex()},
+		})
+	}()
 }
 
 func countScheduledDays(daysOfWeek []string, from, to time.Time) int {
@@ -264,7 +265,7 @@ func (h *SubscriptionHandler) Update(c *gin.Context) {
 	}
 
 	// 3) Получаем подписку, чтобы знать userId для уведомления
-	sub, err := h.service.GetByID(c.Request.Context(), id)
+	_, err = h.service.GetByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
 		return
@@ -278,25 +279,15 @@ func (h *SubscriptionHandler) Update(c *gin.Context) {
 		return
 	}
 
-	// 5. Уведомление клиенту об изменении расписания
-	userIDHex := sub.UserID.Hex()
-	go func() {
-		payload := utils.NotificationPayload{
-			RecipientID:   userIDHex,
-			RecipientRole: "client",
-			Title:         "Расписание подписки обновлено",
-			Body:          "Дни недели вашей подписки были изменены.",
-			Type:          "subscription_updated",
-			Channel:       "email",
-			Data: map[string]interface{}{
-				"subscription_id": sub.ID.Hex(),
-				"new_schedule":    req.DaysOfWeek,
-			},
-		}
-		_ = utils.SendNotification(context.Background(), payload)
-	}()
-
 	c.JSON(http.StatusOK, gin.H{"message": "schedule updated"})
+	go func() {
+		_ = utils.SendNotificationEvent(context.Background(), utils.NotificationEvent{
+			UserID:    id.Hex(), // если sub.UserID есть, лучше sub.UserID.Hex()
+			Role:      "client",
+			Type:      "subscription_updated",
+			ExtraData: map[string]string{"subscription_id": id.Hex()},
+		})
+	}()
 }
 
 // DELETE /api/subscriptions/:id
@@ -307,7 +298,7 @@ func (h *SubscriptionHandler) Cancel(c *gin.Context) {
 		return
 	}
 	// Получаем подписку, чтобы знать userId
-	sub, err := h.service.GetByID(c.Request.Context(), id)
+	_, err = h.service.GetByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
 		return
@@ -318,24 +309,15 @@ func (h *SubscriptionHandler) Cancel(c *gin.Context) {
 		return
 	}
 
-	// Уведомление клиенту об отмене подписки
-	userIDHex := sub.UserID.Hex()
-	go func() {
-		payload := utils.NotificationPayload{
-			RecipientID:   userIDHex,
-			RecipientRole: "client",
-			Title:         "Подписка отменена",
-			Body:          "Ваша подписка была успешно отменена.",
-			Type:          "subscription_cancelled",
-			Channel:       "email",
-			Data: map[string]interface{}{
-				"subscription_id": sub.ID.Hex(),
-			},
-		}
-		_ = utils.SendNotification(context.Background(), payload)
-	}()
-
 	c.JSON(http.StatusOK, gin.H{"message": "subscription cancelled"})
+	go func() {
+		_ = utils.SendNotificationEvent(context.Background(), utils.NotificationEvent{
+			UserID:    id.Hex(), // лучше sub.UserID.Hex()
+			Role:      "client",
+			Type:      "subscription_updated", // или "subscription_cancelled" если заведёшь такой тип
+			ExtraData: map[string]string{"subscription_id": id.Hex()},
+		})
+	}()
 }
 
 // GetMy возвращает подписки текущего пользователя ("/subscriptions/my").
@@ -358,22 +340,6 @@ func (h *SubscriptionHandler) GetMy(c *gin.Context) {
 	if subs == nil {
 		subs = make([]models.Subscription, 0)
 	}
-
-	// 4) Подключаем уведомление при просмотре (необязательно, но можно уведомить менеджера)
-	go func() {
-		payload := utils.NotificationPayload{
-			RecipientID:   "",
-			RecipientRole: "manager",
-			Title:         "Пользователь просматривает подписки",
-			Body:          "Пользователь " + userIDHex + " запросил свои подписки.",
-			Type:          "view_subscriptions",
-			Channel:       "email",
-			Data: map[string]interface{}{
-				"user_id": userIDHex,
-			},
-		}
-		_ = utils.SendNotification(context.Background(), payload)
-	}()
 
 	// 5) Отдаём JSON-массив подписок
 	c.JSON(http.StatusOK, subs)

@@ -14,6 +14,7 @@ type Config struct {
 	JWTSecret              string
 	NotificationServiceURL string
 	AuthServiceURL         string
+	NotifiServiceURL       string
 }
 
 func LoadConfig() (*Config, error) {
@@ -27,5 +28,6 @@ func LoadConfig() (*Config, error) {
 		JWTSecret:              os.Getenv("JWT_SECRET"),
 		NotificationServiceURL: os.Getenv("NOTIFICATION_SERVICE_URL"),
 		AuthServiceURL:         os.Getenv("AUTH_SERVICE_URL"),
+		NotifiServiceURL:       os.Getenv("NOTIFI_SERVICE_URL"),
 	}, nil
 }

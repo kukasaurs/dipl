@@ -7,9 +7,10 @@ import (
 )
 
 type Config struct {
-	MongoURI       string
-	ServerPort     string
-	AuthServiceURL string
+	MongoURI         string
+	ServerPort       string
+	AuthServiceURL   string
+	NotifiServiceURL string
 }
 
 func LoadConfig() (*Config, error) {
@@ -18,8 +19,9 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &Config{
-		MongoURI:       os.Getenv("MONGO_URI"),
-		ServerPort:     os.Getenv("SERVER_PORT"),
-		AuthServiceURL: os.Getenv("AUTH_SERVICE_URL"),
+		MongoURI:         os.Getenv("MONGO_URI"),
+		ServerPort:       os.Getenv("SERVER_PORT"),
+		AuthServiceURL:   os.Getenv("AUTH_SERVICE_URL"),
+		NotifiServiceURL: os.Getenv("NOTIFI_SERVICE_URL"),
 	}, nil
 }
