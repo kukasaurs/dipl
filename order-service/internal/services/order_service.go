@@ -161,18 +161,33 @@ func (s *orderService) UnassignCleaner(ctx context.Context, id primitive.ObjectI
 	return nil
 }
 
-// ConfirmCompletion без изменений.
+// ConfirmCompletion — помечаем заказ как DONE, чистим кэш и начисляем XP:
 func (s *orderService) ConfirmCompletion(ctx context.Context, id primitive.ObjectID, photoURL string) error {
+	// 1. Вычитываем заказ
 	order, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
+
+	// 2. Помечаем статус в модели и сохраняем
 	order.Status = models.StatusCompleted
 	order.PhotoURL = &photoURL
 	if err := s.repo.Update(ctx, order); err != nil {
 		return err
 	}
+
+	// 3. Чистим кэш
 	s.clearCache(ctx, order.ClientID)
+
+	//4. Начисляем XP
+
+	for _, cleanerID := range order.CleanerID {
+		utils.SendGamificationXP(s.cfg, cleanerID, 10)
+	}
+
+	clientID := order.ClientID // строка
+	utils.SendGamificationXP(s.cfg, clientID, 5)
+
 	return nil
 }
 

@@ -45,14 +45,16 @@ func main() {
 	router.Use(gin.Logger(), gin.Recovery())
 	router.RedirectTrailingSlash = false
 
+	router.POST("/users/gamification/add-xp", h.AddXP)
+	
 	authMW := utils.AuthMiddleware(cfg.AuthServiceURL)
-
 	users := router.Group("/users")
 	users.Use(authMW)
 	{
 		// доступно всем аутентифицированным
 		users.GET("/me", h.GetMe)
 		users.GET("/:id", h.GetUserByID)
+		users.GET("/gamification/status", h.GetStatus) // возвращает текущий XP и уровень
 
 		// менеджер и админ могут смотреть список и создавать
 		mgrAdmin := users.Group("")

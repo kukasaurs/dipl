@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -20,8 +21,30 @@ func NewUserRepository(db *mongo.Database) *UserRepository {
 
 func (r *UserRepository) Create(ctx context.Context, u *models.User) error {
 	u.ID = primitive.NewObjectID()
+	u.XPTotal = 0
+	u.CurrentLevel = 1
 	_, err := r.col.InsertOne(ctx, u)
 
+	return err
+}
+
+func (r *UserRepository) AddXP(ctx context.Context, id primitive.ObjectID, xp int) error {
+	update := bson.M{"$inc": bson.M{"xp_total": xp}}
+	res, err := r.col.UpdateOne(ctx, bson.M{"_id": id}, update)
+	if err != nil {
+
+		return err
+	}
+	if res.MatchedCount == 0 {
+		return fmt.Errorf("user not found")
+	}
+
+	return nil
+}
+
+func (r *UserRepository) UpdateLevel(ctx context.Context, id primitive.ObjectID, newLevel int) error {
+	update := bson.M{"$set": bson.M{"current_level": newLevel}}
+	_, err := r.col.UpdateOne(ctx, bson.M{"_id": id}, update)
 	return err
 }
 
