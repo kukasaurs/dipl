@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"cleaning-app/support-service/internal/models"
+	"cleaning-app/support-service/internal/utils"
+
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -120,7 +122,6 @@ func (h *SupportHandler) UpdateTicketStatus(c *gin.Context) {
 
 // POST /support/tickets/:id/messages
 func (h *SupportHandler) SendMessage(c *gin.Context) {
-
 	hexID := c.Param("id")
 	ticketID, err := primitive.ObjectIDFromHex(hexID)
 	if err != nil {
@@ -149,6 +150,35 @@ func (h *SupportHandler) SendMessage(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// ── Уведомление о новом сообщении ──
+	// Если отправитель — клиент или cleaner, уведомляем всех менеджеров
+	// Если отправитель — manager или admin, уведомляем client
+	var recipientID, recipientRole, evtType string
+	if msg.SenderRole == "client" || msg.SenderRole == "cleaner" {
+		recipientID = "manager"
+		recipientRole = "manager"
+		evtType = "support_message"
+	} else {
+		// manager или admin
+		ticket, tErr := h.service.GetTicketByID(c.Request.Context(), ticketID)
+		if tErr == nil {
+			recipientID = ticket.ClientID
+			recipientRole = "client"
+			evtType = "support_message"
+		}
+	}
+	if recipientID != "" {
+		go func(recID, recRole, eventType, ticketIDStr string) {
+			_ = utils.SendNotificationEvent(context.Background(), utils.NotificationEvent{
+				UserID:    recID,
+				Role:      recRole,
+				Type:      eventType,
+				ExtraData: map[string]string{"ticket_id": ticketIDStr},
+			})
+		}(recipientID, recipientRole, evtType, ticketID.Hex())
+	}
+
 	c.JSON(http.StatusCreated, msg)
 }
 
@@ -171,7 +201,6 @@ func (h *SupportHandler) GetMessages(c *gin.Context) {
 		userURL := fmt.Sprintf("%s/users/%s", h.userServiceURL, m.SenderID)
 		req, err := http.NewRequestWithContext(c.Request.Context(), "GET", userURL, nil)
 		if err == nil {
-			// Форвардим исходный токен
 			if auth := c.GetHeader("Authorization"); auth != "" {
 				req.Header.Set("Authorization", auth)
 			}
@@ -197,13 +226,11 @@ func (h *SupportHandler) GetMessages(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
-// support-service/internal/handler/support_handler.go
-
 func (h *SupportHandler) GetTickets(c *gin.Context) {
 	userID := c.GetString("userId")
 	role := c.GetString("role")
 
-	status := c.Query("status") // "", "open", "in_progress", "closed"
+	status := c.Query("status")
 
 	var tickets []models.Ticket
 	var err error
@@ -216,17 +243,18 @@ func (h *SupportHandler) GetTickets(c *gin.Context) {
 		tickets, err = h.service.GetAllTicketsByStatus(
 			c.Request.Context(), models.TicketStatus(status))
 	case "admin":
-		// админ видит все тикеты, по умолчанию in_progress (эскалированные)
 		if status == "" {
 			status = string(models.StatusInProgress)
 		}
-		tickets, err = h.service.GetAllTicketsByStatus(c.Request.Context(), models.TicketStatus(status))
+		tickets, err = h.service.GetAllTicketsByStatus(
+			c.Request.Context(), models.TicketStatus(status))
 	case "user":
-		// Клиент видит только свои тикеты, с возможной фильтрацией по статусу
 		if status == "" {
-			tickets, err = h.service.GetTicketsForClient(c.Request.Context(), userID)
+			tickets, err = h.service.GetTicketsForClient(
+				c.Request.Context(), userID)
 		} else {
-			tickets, err = h.service.GetTicketsForUserByStatus(c.Request.Context(), userID, models.TicketStatus(status))
+			tickets, err = h.service.GetTicketsForUserByStatus(
+				c.Request.Context(), userID, models.TicketStatus(status))
 		}
 	case "cleaner":
 		if status == "" {

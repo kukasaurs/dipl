@@ -5,15 +5,13 @@ import (
 	"errors"
 
 	"cleaning-app/support-service/internal/models"
-	"cleaning-app/support-service/internal/utils"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // SupportService отвечает за бизнес-логику support-сервиса.
 type SupportService struct {
-	repo     SupportRepository
-	notifier *utils.NotificationClient
+	repo SupportRepository
 }
 
 type SupportRepository interface {
@@ -33,8 +31,8 @@ type SupportRepository interface {
 }
 
 // NewSupportService конструирует SupportService.
-func NewSupportService(repo SupportRepository, notifier *utils.NotificationClient) *SupportService {
-	return &SupportService{repo: repo, notifier: notifier}
+func NewSupportService(repo SupportRepository) *SupportService {
+	return &SupportService{repo: repo}
 }
 
 // CreateTicket создаёт новый тикет.
@@ -77,16 +75,6 @@ func (s *SupportService) AddMessage(ctx context.Context, msg *models.Message) er
 	if err := s.repo.AddMessage(ctx, msg); err != nil {
 		return err
 	}
-
-	// 4. Отправляем уведомление
-	var targetUserID string
-	switch msg.SenderRole {
-	case "client", "cleaner":
-		targetUserID = "manager" // групповой канал менеджеров
-	default: // manager или admin
-		targetUserID = ticket.ClientID // автор тикета
-	}
-	_ = s.notifier.SendMessageNotification(ctx, targetUserID, msg.Text)
 
 	return nil
 }
