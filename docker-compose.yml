@@ -21,6 +21,7 @@ services:
     environment:
       - JWT_SECRET=jani-secret
       - AUTH_SERVICE_URL=http://auth-service:8000
+      - USER_MANAGEMENT_SERVICE_URL=http://user-management-service:8006
     depends_on:
       - auth-service
       - order-service
@@ -47,6 +48,7 @@ services:
     environment:
       - JWT_SECRET=jani-secret
       - AUTH_SERVICE_URL=http://auth-service:8000
+      - USER_MANAGEMENT_SERVICE_URL=http://user-management-service:8006
     env_file:
       - .env.docker
     depends_on:

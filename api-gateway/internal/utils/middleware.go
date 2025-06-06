@@ -17,7 +17,18 @@ type AuthData struct {
 }
 
 func AuthMiddleware(authURL string) gin.HandlerFunc {
+	skipPaths := map[string]bool{
+		"/api/users/gamification/add-xp": true,
+	}
+
 	return func(c *gin.Context) {
+		// Пропуск проверки, если путь в списке исключений
+		if skipPaths[c.Request.URL.Path] {
+			log.Printf("[AUTH] Skipping auth for path: %s", c.Request.URL.Path)
+			c.Next()
+			return
+		}
+
 		log.Printf("[AUTH] Using auth service at: %s", authURL)
 
 		token := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
@@ -56,14 +67,12 @@ func AuthMiddleware(authURL string) gin.HandlerFunc {
 			return
 		}
 
-		// Проверяем banned
 		if data.Banned {
 			log.Printf("[AUTH] Access denied for banned user: %s", data.UserID)
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Account is banned"})
 			return
 		}
 
-		// Проверяем reset_required
 		if data.ResetRequired {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Password reset required"})
 			return

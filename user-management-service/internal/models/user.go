@@ -44,6 +44,8 @@ type User struct {
 	Banned        bool               `bson:"banned"         json:"banned"`
 	ResetRequired bool               `bson:"reset_required" json:"reset_required"`
 	Password      string             `bson:"password"       json:"-"`
+	XPTotal       int                `bson:"xp_total"      json:"xp_total"`
+	CurrentLevel  int                `bson:"current_level" json:"current_level"`
 }
 
 func (r Role) IsValid() bool {

@@ -13,7 +13,6 @@ const (
 	StatusPending   OrderStatus = "pending"
 	StatusAssigned  OrderStatus = "assigned"
 	StatusCompleted OrderStatus = "completed"
-	StatusCanceled  OrderStatus = "canceled"
 	StatusPaid      OrderStatus = "paid"
 	StatusPrePaid   OrderStatus = "prepaid"
 )

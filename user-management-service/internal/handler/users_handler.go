@@ -22,10 +22,70 @@ type UserService interface {
 	ChangeUserRole(ctx context.Context, id primitive.ObjectID, newRole models.Role) error
 	BlockUser(ctx context.Context, id primitive.ObjectID) error
 	UnblockUser(ctx context.Context, id primitive.ObjectID) error
+	AddXPToUser(ctx context.Context, id primitive.ObjectID, xp int) (*models.GamificationStatus, error)
+	GetGamificationStatus(ctx context.Context, id primitive.ObjectID) (*models.GamificationStatus, error)
 }
 
 func NewUserHandler(s UserService) *UserHandler {
 	return &UserHandler{service: s}
+}
+
+// POST /api/users/gamification/add-xp
+func (h *UserHandler) AddXP(c *gin.Context) {
+	// 1) Считываем JSON из тела { "user_id": "<hex-id>", "xp": <int> }
+	var payload struct {
+		UserID string `json:"user_id" binding:"required"`
+		XP     int    `json:"xp"      binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		return
+	}
+
+	// 2) Конвертируем user_id в ObjectID
+	userID, err := primitive.ObjectIDFromHex(payload.UserID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user_id"})
+		return
+	}
+
+	// 3) Добавляем XP
+	status, err := h.service.AddXPToUser(c.Request.Context(), userID, payload.XP)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, status)
+}
+
+// GET /api/users/gamification/status
+func (h *UserHandler) GetStatus(c *gin.Context) {
+	// 1. Получаем userID из JWT-middleware
+	idStr, exists := c.Get("userId")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user ID not found in token"})
+		return
+	}
+	idHex, ok := idStr.(string)
+	if !ok || idHex == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user ID in token"})
+		return
+	}
+
+	// 2. Конвертируем hex-строку в ObjectID
+	userID, err := primitive.ObjectIDFromHex(idHex)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID format"})
+		return
+	}
+
+	// 3. Получаем статус из сервиса
+	status, err := h.service.GetGamificationStatus(context.TODO(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, status)
 }
 
 // GET /api/users/me
