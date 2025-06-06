@@ -15,15 +15,18 @@ import (
 )
 
 func main() {
+	// 1. Настройка контекста и shutdown-менеджера
 	baseCtx := context.Background()
 	ctx, shutdownManager := utils.NewShutdownManager(baseCtx)
 	shutdownManager.StartListening()
 
+	// 2. Загрузка конфигурации
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatal("Failed to load config:", err)
 	}
 
+	// 3. Подключение к MongoDB
 	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoURI))
 	if err != nil {
 		log.Fatal("Mongo connection failed:", err)
@@ -35,16 +38,17 @@ func main() {
 		return mongoClient.Disconnect(ctx)
 	})
 
+	// 4. Инициализация репозитория и сервиса (без логики уведомлений)
 	repo := repository.NewSupportRepository(db)
-	notifier := utils.NewNotificationClient(cfg.NotificationServiceURL)
-
-	supportService := services.NewSupportService(repo, notifier)
+	supportService := services.NewSupportService(repo)
 	supportHandler := handler.NewSupportHandler(supportService, cfg.UserServiceURL)
 
+	// 5. Настройка Gin
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 	router.RedirectTrailingSlash = false
 
+	// 6. Middleware аутентификации
 	authMW := utils.AuthMiddleware(cfg.AuthServiceURL)
 
 	api := router.Group("/support", authMW)
@@ -56,6 +60,7 @@ func main() {
 		api.GET("/tickets/:id/messages", supportHandler.GetMessages)
 	}
 
+	// 7. Запуск HTTP-сервера
 	server := &http.Server{
 		Addr:    cfg.ServerPort,
 		Handler: router,

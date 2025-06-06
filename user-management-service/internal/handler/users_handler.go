@@ -1,11 +1,12 @@
 package handler
 
 import (
-	"cleaning-app/user-management-service/internal/models"
-	"cleaning-app/user-management-service/internal/utils"
 	"context"
 	"fmt"
 	"net/http"
+
+	"cleaning-app/user-management-service/internal/models"
+	"cleaning-app/user-management-service/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -32,7 +33,6 @@ func NewUserHandler(s UserService) *UserHandler {
 
 // POST /api/users/gamification/add-xp
 func (h *UserHandler) AddXP(c *gin.Context) {
-	// 1) Считываем JSON из тела { "user_id": "<hex-id>", "xp": <int> }
 	var payload struct {
 		UserID string `json:"user_id" binding:"required"`
 		XP     int    `json:"xp"      binding:"required"`
@@ -42,25 +42,33 @@ func (h *UserHandler) AddXP(c *gin.Context) {
 		return
 	}
 
-	// 2) Конвертируем user_id в ObjectID
 	userID, err := primitive.ObjectIDFromHex(payload.UserID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user_id"})
 		return
 	}
 
-	// 3) Добавляем XP
 	status, err := h.service.AddXPToUser(c.Request.Context(), userID, payload.XP)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// ── Уведомление об обновлении XP ──
+	go func() {
+		_ = utils.SendNotificationEvent(context.Background(), utils.NotificationEvent{
+			UserID:    payload.UserID,
+			Role:      "user",
+			Type:      "xp_updated",
+			ExtraData: map[string]string{"new_xp": fmt.Sprintf("%d", status.XPTotal)},
+		})
+	}()
+
 	c.JSON(http.StatusOK, status)
 }
 
 // GET /api/users/gamification/status
 func (h *UserHandler) GetStatus(c *gin.Context) {
-	// 1. Получаем userID из JWT-middleware
 	idStr, exists := c.Get("userId")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "user ID not found in token"})
@@ -72,14 +80,12 @@ func (h *UserHandler) GetStatus(c *gin.Context) {
 		return
 	}
 
-	// 2. Конвертируем hex-строку в ObjectID
 	userID, err := primitive.ObjectIDFromHex(idHex)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID format"})
 		return
 	}
 
-	// 3. Получаем статус из сервиса
 	status, err := h.service.GetGamificationStatus(context.TODO(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -132,18 +138,15 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
-	// Хешируем пароль
 	hash, err := utils.HashPassword(input.Password)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "не удалось захешировать пароль"})
 		return
 	}
 
-	// Определяем, кто создаёт
 	creatorRole := c.GetString("role")
 	role := input.Role
 	if creatorRole == string(models.RoleManager) {
-		// Менеджер не может создавать никого кроме обычных юзеров
 		role = models.RoleUser
 	}
 
@@ -164,23 +167,16 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
-	// Уведомление созданному пользователю
+	// ── Уведомление «Добро пожаловать» ──
 	go func() {
-		payload := utils.NotificationPayload{
-			RecipientID:   user.ID.Hex(),
-			RecipientRole: "user",
-			Title:         "Аккаунт создан",
-			Body:          fmt.Sprintf("Ваш аккаунт (%s) успешно создан.", user.Email),
-			Type:          "user_created",
-			Channel:       "email",
-			Data: map[string]interface{}{
-				"user_id": user.ID.Hex(),
-			},
-		}
-		_ = utils.SendNotification(context.Background(), payload)
+		_ = utils.SendNotificationEvent(context.Background(), utils.NotificationEvent{
+			UserID:    user.ID.Hex(),
+			Role:      "user",
+			Type:      "welcome",
+			ExtraData: map[string]string{"user_email": user.Email},
+		})
 	}()
 
-	// Отдаём только безопасные поля
 	c.JSON(http.StatusCreated, gin.H{
 		"id":         user.ID.Hex(),
 		"email":      user.Email,
@@ -189,7 +185,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 	})
 }
 
-// PUT /api/users/:id/role (admin only) - Изменение роли существующего пользователя
+// PUT /api/users/:id/role (admin only)
 func (h *UserHandler) ChangeUserRole(c *gin.Context) {
 	id, err := primitive.ObjectIDFromHex(c.Param("id"))
 	if err != nil {
@@ -200,16 +196,8 @@ func (h *UserHandler) ChangeUserRole(c *gin.Context) {
 	var input struct {
 		Role models.Role `json:"role" binding:"required"`
 	}
-
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Получаем старую информацию для уведомления
-	user, err := h.service.GetUserByID(c.Request.Context(), id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
 
@@ -218,23 +206,15 @@ func (h *UserHandler) ChangeUserRole(c *gin.Context) {
 		return
 	}
 
-	// Уведомление пользователю о смене роли
-	go func() {
-		payload := utils.NotificationPayload{
-			RecipientID:   id.Hex(),
-			RecipientRole: "user",
-			Title:         "Роль изменена",
-			Body:          fmt.Sprintf("Ваша роль изменена с '%s' на '%s'.", user.Role, input.Role),
-			Type:          "role_changed",
-			Channel:       "email",
-			Data: map[string]interface{}{
-				"user_id":  id.Hex(),
-				"new_role": input.Role,
-				"old_role": user.Role,
-			},
-		}
-		_ = utils.SendNotification(context.Background(), payload)
-	}()
+	// ── Уведомление об изменении роли ──
+	go func(newRole string) {
+		_ = utils.SendNotificationEvent(context.Background(), utils.NotificationEvent{
+			UserID:    id.Hex(),
+			Role:      "user",
+			Type:      "role_changed",
+			ExtraData: map[string]string{"new_role": newRole},
+		})
+	}(string(input.Role))
 
 	c.JSON(http.StatusOK, gin.H{"message": "user role updated"})
 }
@@ -247,8 +227,7 @@ func (h *UserHandler) BlockUser(c *gin.Context) {
 		return
 	}
 
-	// Получаем информацию о пользователе для уведомления
-	_, err = h.service.GetUserByID(c.Request.Context(), id)
+	user, err := h.service.GetUserByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
@@ -259,21 +238,15 @@ func (h *UserHandler) BlockUser(c *gin.Context) {
 		return
 	}
 
-	// Уведомление пользователю о блокировке
-	go func() {
-		payload := utils.NotificationPayload{
-			RecipientID:   id.Hex(),
-			RecipientRole: "user",
-			Title:         "Аккаунт заблокирован",
-			Body:          "Ваш аккаунт временно заблокирован. Пожалуйста, свяжитесь с поддержкой.",
-			Type:          "user_blocked",
-			Channel:       "email",
-			Data: map[string]interface{}{
-				"user_id": id.Hex(),
-			},
-		}
-		_ = utils.SendNotification(context.Background(), payload)
-	}()
+	// ── Уведомление о блокировке ──
+	go func(userEmail string) {
+		_ = utils.SendNotificationEvent(context.Background(), utils.NotificationEvent{
+			UserID:    id.Hex(),
+			Role:      "user",
+			Type:      "user_blocked",
+			ExtraData: map[string]string{"user_email": userEmail},
+		})
+	}(user.Email)
 
 	c.JSON(http.StatusOK, gin.H{"message": "user blocked"})
 }
@@ -286,8 +259,7 @@ func (h *UserHandler) UnblockUser(c *gin.Context) {
 		return
 	}
 
-	// Получаем информацию о пользователе для уведомления
-	_, err = h.service.GetUserByID(c.Request.Context(), id)
+	user, err := h.service.GetUserByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
@@ -298,27 +270,21 @@ func (h *UserHandler) UnblockUser(c *gin.Context) {
 		return
 	}
 
-	// Уведомление пользователю о разблокировке
-	go func() {
-		payload := utils.NotificationPayload{
-			RecipientID:   id.Hex(),
-			RecipientRole: "user",
-			Title:         "Аккаунт разблокирован",
-			Body:          "Ваш аккаунт был разблокирован. Добро пожаловать обратно!",
-			Type:          "user_unblocked",
-			Channel:       "email",
-			Data: map[string]interface{}{
-				"user_id": id.Hex(),
-			},
-		}
-		_ = utils.SendNotification(context.Background(), payload)
-	}()
+	// ── Уведомление о разблокировке ──
+	go func(userEmail string) {
+		_ = utils.SendNotificationEvent(context.Background(), utils.NotificationEvent{
+			UserID:    id.Hex(),
+			Role:      "user",
+			Type:      "user_unblocked",
+			ExtraData: map[string]string{"user_email": userEmail},
+		})
+	}(user.Email)
 
 	c.JSON(http.StatusOK, gin.H{"message": "user unblocked"})
 }
 
+// GET /api/users/:id
 func (h *UserHandler) GetUserByID(c *gin.Context) {
-	// 1) Парсим hex → ObjectID
 	hexID := c.Param("id")
 	objID, err := primitive.ObjectIDFromHex(hexID)
 	if err != nil {
@@ -326,14 +292,12 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 		return
 	}
 
-	// 2) Вызываем сервис
 	user, err := h.service.GetUserByID(c.Request.Context(), objID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
 
-	// 3) Отдаём нужные поля
 	c.JSON(http.StatusOK, gin.H{
 		"id":    user.ID.Hex(),
 		"email": user.Email,

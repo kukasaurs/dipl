@@ -1,37 +1,46 @@
 package utils
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"net/http"
+	"os"
+
+	"github.com/redis/go-redis/v9"
 )
 
-type NotificationClient struct {
-	URL string
+// NotificationEvent — структура для публикации уведомления через Redis
+type NotificationEvent struct {
+	UserID      string            `json:"user_id"`
+	Role        string            `json:"role"`
+	Type        string            `json:"type"`                   // Например: "welcome", "security", "order_confirmed"
+	Title       string            `json:"title,omitempty"`        // Можно оставить пустым — будет дефолтный
+	Message     string            `json:"message,omitempty"`      // Можно оставить пустым — будет дефолтный
+	ExtraData   map[string]string `json:"extra_data,omitempty"`   // Любые доп. поля (например, email)
+	DeviceToken string            `json:"device_token,omitempty"` // Для пуша
 }
 
-func NewNotificationClient(url string) *NotificationClient {
-	return &NotificationClient{URL: url}
+const NotificationEventsChannel = "notification_events"
+
+// Получение Redis-клиента (инициализируй один раз на старте приложения!)
+var redisClient *redis.Client
+
+func InitRedisClient() {
+	url := os.Getenv("REDIS_URL")
+	opt, err := redis.ParseURL(url)
+	if err != nil {
+		panic(err)
+	}
+	redisClient = redis.NewClient(opt)
 }
 
-func (n *NotificationClient) SendMessageNotification(ctx context.Context, toUserID, messageText string) error {
-	payload := map[string]interface{}{
-		"user_id": toUserID,
-		"type":    "support_message",
-		"data": map[string]string{
-			"text": messageText,
-		},
+// SendNotificationEvent — публикация события в notification_events
+func SendNotificationEvent(ctx context.Context, event NotificationEvent) error {
+	if redisClient == nil {
+		InitRedisClient() // на случай, если забыли инициализировать явно
 	}
-	body, _ := json.Marshal(payload)
-
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, n.URL+"/api/notifications/send", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil || resp.StatusCode >= 300 {
-		return fmt.Errorf("failed to send notification")
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return err
 	}
-	return nil
+	return redisClient.Publish(ctx, NotificationEventsChannel, payload).Err()
 }
