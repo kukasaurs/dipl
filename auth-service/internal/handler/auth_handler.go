@@ -31,7 +31,6 @@ type AuthService interface {
 	AddRating(userID primitive.ObjectID, rating int) error
 	GetRating(userID primitive.ObjectID) (float64, error)
 	ResendTemporaryPassword(email string) error
-	GoogleLogin(idToken string) (string, error)
 }
 
 func NewAuthHandler(authService *services.AuthService) *AuthHandler {
@@ -191,22 +190,6 @@ func (h *AuthHandler) Validate(c *gin.Context) {
 		"role":           claims["role"],
 		"reset_required": claims["reset_required"],
 	})
-}
-
-func (h *AuthHandler) GoogleLogin(c *gin.Context) {
-	var req struct {
-		IDToken string `json:"id_token"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
-		return
-	}
-	token, err := h.authService.GoogleLogin(req.IDToken)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 
 func (h *AuthHandler) ResendPassword(c *gin.Context) {

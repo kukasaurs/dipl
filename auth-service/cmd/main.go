@@ -63,9 +63,8 @@ func main() {
 
 	userRepo := repositories.NewUserRepository(db)
 	jwtUtil := utils.NewJWTUtil(cfg.JWTSecret)
-	googleAuth := services.NewGoogleAuthService(cfg.GoogleClientID)
 
-	authService := services.NewAuthService(userRepo, jwtUtil, googleAuth, emailService, utils.WrapRedisClient(rdb), cfg)
+	authService := services.NewAuthService(userRepo, jwtUtil, emailService, utils.WrapRedisClient(rdb), cfg)
 
 	authHandler := handlers.NewAuthHandler(authService)
 
@@ -77,7 +76,6 @@ func main() {
 	{
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
-		auth.POST("/google-login", authHandler.GoogleLogin)
 		auth.POST("/resend-password", authHandler.ResendPassword)
 
 		auth.GET("/validate", authHandler.Validate)
