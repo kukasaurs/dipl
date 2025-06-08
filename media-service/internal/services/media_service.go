@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -20,12 +21,15 @@ type MediaRepository interface {
 	Save(ctx context.Context, m *models.Media) error
 	FindByOrderID(ctx context.Context, orderID string) ([]models.Media, error)
 	FindByUserID(ctx context.Context, userID string) ([]models.Media, error)
+	FindByID(ctx context.Context, id string) (*models.Media, error)
 }
 
 func NewMediaService(r MediaRepository, m *minio.Client, bucket string) *MediaService {
 	return &MediaService{repo: r, minio: m, bucket: bucket}
 }
-
+func (s *MediaService) GetMediaByID(ctx context.Context, id string) (*models.Media, error) {
+	return s.repo.FindByID(ctx, id)
+}
 func (s *MediaService) Upload(ctx context.Context, reader io.Reader, size int64, contentType, filename string, mType models.MediaType, orderID, userID string) (string, error) {
 	objectKey := fmt.Sprintf("%s/%d_%s", mType, time.Now().UnixNano(), filename)
 	_, err := s.minio.PutObject(ctx, s.bucket, objectKey, reader, size, minio.PutObjectOptions{
@@ -56,4 +60,12 @@ func (s *MediaService) GetReports(ctx context.Context, orderID string) ([]models
 
 func (s *MediaService) GetAvatars(ctx context.Context, userID string) ([]models.Media, error) {
 	return s.repo.FindByUserID(ctx, userID)
+}
+func (s *MediaService) GeneratePresignedURL(ctx context.Context, objectName string) (string, error) {
+	reqParams := make(url.Values)
+	presignedURL, err := s.minio.PresignedGetObject(ctx, s.bucket, objectName, time.Hour, reqParams)
+	if err != nil {
+		return "", err
+	}
+	return presignedURL.String(), nil
 }

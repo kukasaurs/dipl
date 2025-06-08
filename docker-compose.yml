@@ -15,13 +15,16 @@ services:
     volumes:
       - mongodb_data:/data/db
   minio:
-    image: minio/minio
-    command: server /data
+    image: quay.io/minio/minio
+    command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "9000:9000"
+      - "9000:9000"  # S3 API
+      - "9001:9001"  # Веб-консоль
+    volumes:
+      - minio_data:/data
   api-gateway:
     build: ./api-gateway
     ports:
@@ -135,6 +138,7 @@ services:
       - mongodb
       - auth-service
       - minio
+    restart: always
   support-service:
     build: ./support-service
     ports:
@@ -156,3 +160,4 @@ services:
 volumes:
   mongodb_data:
   redis_data:
+  minio_data:
