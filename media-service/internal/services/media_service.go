@@ -2,7 +2,6 @@ package service
 
 import (
 	"cleaning-app/media-service/internal/models"
-	"cleaning-app/media-service/internal/repository"
 	"context"
 	"fmt"
 	"io"
@@ -12,23 +11,22 @@ import (
 )
 
 type MediaService struct {
-	repo   *repository.MediaRepository
+	repo   MediaRepository
 	minio  *minio.Client
 	bucket string
 }
 
-func NewMediaService(r *repository.MediaRepository, m *minio.Client, bucket string) *MediaService {
+type MediaRepository interface {
+	Save(ctx context.Context, m *models.Media) error
+	FindByOrderID(ctx context.Context, orderID string) ([]models.Media, error)
+	FindByUserID(ctx context.Context, userID string) ([]models.Media, error)
+}
+
+func NewMediaService(r MediaRepository, m *minio.Client, bucket string) *MediaService {
 	return &MediaService{repo: r, minio: m, bucket: bucket}
 }
 
-func (s *MediaService) Upload(
-	ctx context.Context,
-	reader io.Reader,
-	size int64,
-	contentType, filename string,
-	mType models.MediaType,
-	orderID, userID string,
-) (string, error) {
+func (s *MediaService) Upload(ctx context.Context, reader io.Reader, size int64, contentType, filename string, mType models.MediaType, orderID, userID string) (string, error) {
 	objectKey := fmt.Sprintf("%s/%d_%s", mType, time.Now().UnixNano(), filename)
 	_, err := s.minio.PutObject(ctx, s.bucket, objectKey, reader, size, minio.PutObjectOptions{
 		ContentType: contentType,

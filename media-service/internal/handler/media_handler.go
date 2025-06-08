@@ -2,19 +2,29 @@ package handler
 
 import (
 	"cleaning-app/media-service/internal/models"
-	"cleaning-app/media-service/internal/services"
-	"cleaning-app/media-service/internal/utils"
+	"context"
 	"github.com/gin-gonic/gin"
+	"io"
 	"log"
 	"net/http"
 )
 
 type MediaHandler struct {
-	svc         *service.MediaService
-	orderClient *utils.OrderServiceClient
+	svc         MediaService
+	orderClient OrderServiceClient
 }
 
-func NewMediaHandler(svc *service.MediaService, orderClient *utils.OrderServiceClient) *MediaHandler {
+type MediaService interface {
+	Upload(ctx context.Context, reader io.Reader, size int64, contentType, filename string, mType models.MediaType, orderID, userID string, ) (string, error)
+	GetReports(ctx context.Context, orderID string) ([]models.Media, error)
+	GetAvatars(ctx context.Context, userID string) ([]models.Media, error)
+}
+
+type OrderServiceClient interface {
+	IsCleaner(ctx context.Context, orderID, authHeader string, ) (bool, error)
+}
+
+func NewMediaHandler(svc MediaService, orderClient OrderServiceClient) *MediaHandler {
 	return &MediaHandler{svc: svc, orderClient: orderClient}
 }
 
