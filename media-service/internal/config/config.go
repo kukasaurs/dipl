@@ -15,6 +15,7 @@ type Config struct {
 	NotificationServiceURL string
 	AuthServiceURL         string
 	OrderServiceURL        string
+	MinioPublicURL         string
 }
 
 func LoadConfig() (*Config, error) {
@@ -29,5 +30,6 @@ func LoadConfig() (*Config, error) {
 		NotificationServiceURL: os.Getenv("NOTIFICATION_SERVICE_URL"),
 		AuthServiceURL:         os.Getenv("AUTH_SERVICE_URL"),
 		OrderServiceURL:        os.Getenv("ORDER_SERVICE_URL"),
+		MinioPublicURL:         os.Getenv("MINIO_PUBLIC_URL"),
 	}, nil
 }

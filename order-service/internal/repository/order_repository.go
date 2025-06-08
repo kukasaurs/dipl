@@ -12,7 +12,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// orderRepository отвечает за CRUD над коллекцией "orders".
 type orderRepository struct {
 	collection *mongo.Collection
 }
@@ -174,6 +173,12 @@ func (r *orderRepository) UnassignCleaner(ctx context.Context, id primitive.Obje
 }
 
 func (r *orderRepository) SaveOrderReview(ctx context.Context, orderID primitive.ObjectID, rating int, comment string) error {
+
+	filter := bson.M{
+		"_id":    orderID,
+		"rating": bson.M{"$exists": false},
+	}
+
 	update := bson.M{
 		"$set": bson.M{
 			"rating":         rating,
@@ -181,9 +186,18 @@ func (r *orderRepository) SaveOrderReview(ctx context.Context, orderID primitive
 			"updated_at":     time.Now().UTC(),
 		},
 	}
-	filter := bson.M{"_id": orderID}
-	_, err := r.collection.UpdateOne(ctx, filter, update)
-	return err
+
+	res, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+
+		return err
+	}
+	if res.ModifiedCount == 0 {
+
+		return errors.New("order already reviewed")
+	}
+
+	return nil
 }
 
 func (r *orderRepository) CountOrders(ctx context.Context, filter interface{}) (int64, error) {

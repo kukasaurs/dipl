@@ -6,15 +6,17 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/minio/minio-go/v7"
 )
 
 type MediaService struct {
-	repo   MediaRepository
-	minio  *minio.Client
-	bucket string
+	repo      MediaRepository
+	minio     *minio.Client
+	bucket    string
+	publicURL string
 }
 
 type MediaRepository interface {
@@ -24,8 +26,8 @@ type MediaRepository interface {
 	FindByID(ctx context.Context, id string) (*models.Media, error)
 }
 
-func NewMediaService(r MediaRepository, m *minio.Client, bucket string) *MediaService {
-	return &MediaService{repo: r, minio: m, bucket: bucket}
+func NewMediaService(r MediaRepository, m *minio.Client, bucket string, publicURL string) *MediaService {
+	return &MediaService{repo: r, minio: m, bucket: bucket, publicURL: publicURL}
 }
 func (s *MediaService) GetMediaByID(ctx context.Context, id string) (*models.Media, error) {
 	return s.repo.FindByID(ctx, id)
@@ -38,8 +40,11 @@ func (s *MediaService) Upload(ctx context.Context, reader io.Reader, size int64,
 	if err != nil {
 		return "", err
 	}
-	url := fmt.Sprintf("%s/%s/%s", s.minio.EndpointURL(), s.bucket, objectKey)
-
+	url := fmt.Sprintf("%s/%s/%s",
+		strings.TrimRight(s.publicURL, "/"), // http://localhost:9000
+		s.bucket,                            // media-cleaning
+		objectKey,                           // avatar/...
+	)
 	media := &models.Media{
 		FileName:  filename,
 		ObjectKey: objectKey,

@@ -43,7 +43,7 @@ func main() {
 	}
 
 	repo := repository.NewMediaRepository(db)
-	svc := service.NewMediaService(repo, minioClient, cfg.MinioBucket)
+	svc := service.NewMediaService(repo, minioClient, cfg.MinioBucket, cfg.MinioPublicURL)
 	orderClient := utils.NewOrderClient(cfg.OrderServiceURL)
 	handler := handler.NewMediaHandler(svc, orderClient)
 

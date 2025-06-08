@@ -106,9 +106,7 @@ func (h *MediaHandler) GetReports(c *gin.Context) {
 func (h *MediaHandler) UploadAvatar(c *gin.Context) {
 	log.Println("[UploadAvatar] Headers:", c.Request.Header)
 
-	// userId берём сразу из JWT-AuthMiddleware
 	userID := c.GetString("userId")
-	// (нет больше проверки userID != param)
 
 	file, header, err := c.Request.FormFile("file")
 	log.Println("[UploadAvatar] FormFile error:", err)
@@ -124,9 +122,9 @@ func (h *MediaHandler) UploadAvatar(c *gin.Context) {
 		header.Size,
 		header.Header.Get("Content-Type"),
 		header.Filename,
-		models.AvatarMedia, // тип аватарки
-		"",                 // нет orderID
-		userID,             // userID из токена
+		models.AvatarMedia,
+		"",
+		userID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
