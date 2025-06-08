@@ -15,13 +15,13 @@ type MediaHandler struct {
 }
 
 type MediaService interface {
-	Upload(ctx context.Context, reader io.Reader, size int64, contentType, filename string, mType models.MediaType, orderID, userID string, ) (string, error)
+	Upload(ctx context.Context, reader io.Reader, size int64, contentType, filename string, mType models.MediaType, orderID, userID string) (string, error)
 	GetReports(ctx context.Context, orderID string) ([]models.Media, error)
 	GetAvatars(ctx context.Context, userID string) ([]models.Media, error)
 }
 
 type OrderServiceClient interface {
-	IsCleaner(ctx context.Context, orderID, authHeader string, ) (bool, error)
+	IsCleaner(ctx context.Context, orderID, authHeader string) (bool, error)
 }
 
 func NewMediaHandler(svc MediaService, orderClient OrderServiceClient) *MediaHandler {
@@ -82,7 +82,7 @@ func (h *MediaHandler) UploadAvatar(c *gin.Context) {
 	log.Println("[UploadAvatar] Headers:", c.Request.Header)
 
 	// userId берём сразу из JWT-AuthMiddleware
-	userID := c.GetString("user_id")
+	userID := c.GetString("userId")
 	// (нет больше проверки userID != param)
 
 	file, header, err := c.Request.FormFile("file")
@@ -112,12 +112,13 @@ func (h *MediaHandler) UploadAvatar(c *gin.Context) {
 
 func (h *MediaHandler) GetAvatars(c *gin.Context) {
 	// userId берём из токена
-	userID := c.GetString("user_id")
+	userID := c.GetString("userId")
 
 	medias, err := h.svc.GetAvatars(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	log.Printf("[GetAvatars] found %d docs for user %s\n", len(medias), userID)
 	c.JSON(http.StatusOK, medias)
 }

@@ -35,11 +35,17 @@ func (r *MediaRepository) FindByOrderID(ctx context.Context, orderID string) ([]
 }
 
 func (r *MediaRepository) FindByUserID(ctx context.Context, userID string) ([]models.Media, error) {
-	cursor, err := r.col.Find(ctx, bson.M{"user_id": userID, "type": models.AvatarMedia})
+	filter := bson.M{
+		"user_id": userID, // или "userId" в точности как в БД
+		"type":    models.AvatarMedia,
+	}
+	cursor, err := r.col.Find(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
-	var res []models.Media
+
+	// Гарантируем [] вместо null
+	res := make([]models.Media, 0)
 	if err := cursor.All(ctx, &res); err != nil {
 		return nil, err
 	}
