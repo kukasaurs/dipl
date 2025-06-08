@@ -19,7 +19,6 @@ import (
 type AuthService struct {
 	userRepo UserRepository
 	jwtUtil  *utils.JWTUtil
-	google   *GoogleAuthService
 	email    EmailService
 	redis    *utils.RedisClient
 	cfg      *config.Config
@@ -39,8 +38,8 @@ type UserRepository interface {
 	AddRating(ctx context.Context, cleanerID string, rating int) error
 }
 
-func NewAuthService(userRepo UserRepository, jwtUtil *utils.JWTUtil, google *GoogleAuthService, email EmailService, redis *utils.RedisClient, config *config.Config) *AuthService {
-	return &AuthService{userRepo, jwtUtil, google, email, redis, config}
+func NewAuthService(userRepo UserRepository, jwtUtil *utils.JWTUtil, email EmailService, redis *utils.RedisClient, config *config.Config) *AuthService {
+	return &AuthService{userRepo, jwtUtil, email, redis, config}
 }
 
 func (s *AuthService) Register(user *models.User) (string, error) {

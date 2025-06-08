@@ -1,37 +1,38 @@
 package services
 
 import (
-	"cleaning-app/subscription-service/internal/utils"
 	"context"
 	"fmt"
 	"time"
 
 	"cleaning-app/subscription-service/internal/models"
+	"cleaning-app/subscription-service/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+// SubscriptionService отвечает за логику подписок, включая создание заказов по расписанию и уведомления.
 type SubscriptionService struct {
 	repo          SubscriptionRepository
 	orderService  *utils.OrderServiceClient
 	paymentClient *utils.PaymentServiceClient
 }
 
+// Объявляем интерфейсы для зависимостей (order и payment)
 type OrderService interface {
-	// GetOrderByID возвращает OrderResponse и ошибку.
-	GetOrderByID(ctx context.Context, orderID, authHeader string) (*utils.OrderResponse, error)
-
-	// CreateOrderFromSubscription принимает и sub, и authHeader, чтобы проксировать JWT дальше.
+	// CreateOrderFromSubscription создаёт заказ на основании подписки
 	CreateOrderFromSubscription(ctx context.Context, sub models.Subscription, authHeader string) error
 }
 
 type PaymentServiceClient interface {
+	// Charge списывает оплату за подписку
 	Charge(ctx context.Context, entityType string, entityID string, userID string, authHeader string, amount float64) error
 }
 
+// Репозиторий подписок: CRUD + выборки по расписанию
 type SubscriptionRepository interface {
 	Create(ctx context.Context, sub *models.Subscription) error
-	Update(ctx context.Context, id primitive.ObjectID, update primitive.M) error
+	Update(ctx context.Context, id primitive.ObjectID, update bson.M) error
 	GetByID(ctx context.Context, id primitive.ObjectID) (*models.Subscription, error)
 	GetAll(ctx context.Context) ([]models.Subscription, error)
 	GetByClient(ctx context.Context, clientIDHex string) ([]models.Subscription, error)
@@ -39,22 +40,50 @@ type SubscriptionRepository interface {
 	FindExpired(ctx context.Context, before time.Time) ([]models.Subscription, error)
 	UpdateStatus(ctx context.Context, id primitive.ObjectID, status models.SubscriptionStatus) error
 
-	// Возвращает все подписки, у которых status = active и EndDate >= now.
+	// Возвращает все активные подписки (status=active, end_date >= now)
 	GetActiveSubscriptions(ctx context.Context) ([]models.Subscription, error)
-	// Возвращает подписки, у которых NextPlannedDate <= before и status = active.
+	// Возвращает все активные подписки, у которых NextPlannedDate <= before
 	FindDue(ctx context.Context, before time.Time) ([]models.Subscription, error)
+	// После создания заказа обновляет NextPlannedDate
 	UpdateAfterOrder(ctx context.Context, id primitive.ObjectID, nextDate time.Time) error
 	SetExpired(ctx context.Context, id primitive.ObjectID) error
 }
 
+// Конструктор сервиса
 func NewSubscriptionService(repo SubscriptionRepository, paymentClient *utils.PaymentServiceClient, orderService *utils.OrderServiceClient) *SubscriptionService {
-	s := &SubscriptionService{repo: repo}
-	s.paymentClient = paymentClient
-	s.orderService = orderService
-	return s
+	return &SubscriptionService{
+		repo:          repo,
+		orderService:  orderService,
+		paymentClient: paymentClient,
+	}
 }
 
-// contains возвращает true, если среди []string есть s.
+// NextDates вычисляет даты (без времени) в диапазоне [from..until] по расписанию spec.
+func (s *SubscriptionService) NextDates(spec models.ScheduleSpec, from time.Time, until time.Time) []time.Time {
+	var out []time.Time
+	current := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC)
+	limit := time.Date(until.Year(), until.Month(), until.Day(), 0, 0, 0, 0, time.UTC)
+
+	for !current.After(limit) {
+		weekOfMonth := ((current.Day() - 1) / 7) + 1
+		weekdayAbbr := current.Weekday().String()[:3]
+
+		switch spec.Frequency {
+		case models.Weekly:
+			if contains(spec.DaysOfWeek, weekdayAbbr) {
+				out = append(out, current)
+			}
+		case models.BiWeekly, models.TriWeekly, models.Monthly:
+			if contains(spec.DaysOfWeek, weekdayAbbr) && containsInt(spec.WeekNumbers, weekOfMonth) {
+				out = append(out, current)
+			}
+		}
+		current = current.AddDate(0, 0, 1)
+	}
+	return out
+}
+
+// contains проверяет, есть ли строка s в срезе slice.
 func contains(slice []string, s string) bool {
 	for _, v := range slice {
 		if v == s {
@@ -64,7 +93,7 @@ func contains(slice []string, s string) bool {
 	return false
 }
 
-// containsInt возвращает true, если среди []int есть n.
+// containsInt проверяет, есть ли число n в срезе slice.
 func containsInt(slice []int, n int) bool {
 	for _, v := range slice {
 		if v == n {
@@ -74,41 +103,20 @@ func containsInt(slice []int, n int) bool {
 	return false
 }
 
-// NextDates вычисляет все даты (с нулевой частью времени), подходящие под ScheduleSpec,
-// в диапазоне [from .. until], сравнивая только «дату» без времени.
-// Возвращает список time.Time (каждый — 00:00:00 UTC), на которые нужно создавать заказы.
-func (s *SubscriptionService) NextDates(spec models.ScheduleSpec, from time.Time, until time.Time) []time.Time {
-	var out []time.Time
+// Create сохраняет новую подписку с расчётом NextPlannedDate на первый возможный заказ.
+func (s *SubscriptionService) Create(ctx context.Context, sub *models.Subscription) error {
+	now := time.Now().UTC()
+	sub.Status = models.StatusActive
+	sub.CreatedAt = now
+	sub.UpdatedAt = now
 
-	// Установим current в полночь UTC для «from»
-	current := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC)
-	limit := time.Date(until.Year(), until.Month(), until.Day(), 0, 0, 0, 0, time.UTC)
-
-	for !current.After(limit) {
-		// Вычисляем номер недели в месяце: 1..5
-		weekOfMonth := ((current.Day() - 1) / 7) + 1
-		// Сокращённое название дня недели, например "Mon", "Tue", "Wed"
-		weekdayAbbr := current.Weekday().String()[:3]
-
-		switch spec.Frequency {
-		case models.Weekly:
-			if contains(spec.DaysOfWeek, weekdayAbbr) {
-				out = append(out, current)
-			}
-
-		case models.BiWeekly, models.TriWeekly, models.Monthly:
-			// Для bi/tri/monthly надо совпадение и дня недели, и номера недели в Month
-			if contains(spec.DaysOfWeek, weekdayAbbr) && containsInt(spec.WeekNumbers, weekOfMonth) {
-				out = append(out, current)
-			}
-		}
-
-		current = current.AddDate(0, 0, 1) // следующий день
-	}
-
-	return out
+	// первый заказ планируем на StartDate
+	next := sub.StartDate
+	sub.NextPlannedDate = &next
+	return s.repo.Create(ctx, sub)
 }
 
+// Extend продлевает EndDate у подписки (без оплаты).
 func (s *SubscriptionService) Extend(ctx context.Context, id primitive.ObjectID, extraCleanings int) error {
 	sub, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -118,6 +126,7 @@ func (s *SubscriptionService) Extend(ctx context.Context, id primitive.ObjectID,
 	return s.repo.Update(ctx, id, bson.M{"end_date": newEnd})
 }
 
+// PayForExtension списывает оплату за дополнительные дни по подписке.
 func (s *SubscriptionService) PayForExtension(ctx context.Context, id primitive.ObjectID, extraDays int, authHeader string) error {
 	sub, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -127,10 +136,10 @@ func (s *SubscriptionService) PayForExtension(ctx context.Context, id primitive.
 		if err := s.paymentClient.Charge(
 			ctx,
 			"subscription",
-			sub.ID.Hex(),     // EntityID — ID подписки
-			sub.UserID.Hex(), // UserID
-			authHeader,       // JWT
-			sub.Price,        // платим ровно sub.Price (например, 80.0)
+			sub.ID.Hex(),
+			sub.UserID.Hex(),
+			authHeader,
+			sub.Price,
 		); err != nil {
 			return fmt.Errorf("payment for extension #%d failed: %w", i+1, err)
 		}
@@ -138,96 +147,18 @@ func (s *SubscriptionService) PayForExtension(ctx context.Context, id primitive.
 	return nil
 }
 
-// Create сохраняет новую подписку.
-// sub.OrderID, sub.StartDate, sub.EndDate, sub.DaysOfWeek, sub.Price приходят из handler-а.
-func (s *SubscriptionService) Create(ctx context.Context, sub *models.Subscription) error {
-	now := time.Now().UTC()
-
-	sub.Status = models.StatusActive
-	sub.CreatedAt = now
-	sub.UpdatedAt = now
-	// первый повторный заказ произойдёт в StartDate
-	next := sub.StartDate
-	sub.NextPlannedDate = &next
-
-	return s.repo.Create(ctx, sub)
-}
-
-// ProcessDailyOrders — cron-задача, которой ежедневно проверяем подписки.
-// За 3 дня до NextPlannedDate создаём заказ и уведомление, затем смещаем NextPlannedDate.
-// Если текущая дата > EndDate — помечаем подписку как expired и спрашиваем о продлении.
-// ProcessDailyOrders перебирает «срочные» подписки и создаёт заказы там, где это нужно.
-// вызывается из utils/scheduler.go.
-func (s *SubscriptionService) ProcessDailyOrders(ctx context.Context) {
-	// 1) Вытащить все активные подписки (status=active, end_date >= now)
-	subs, err := s.repo.GetActiveSubscriptions(ctx)
-	if err != nil {
-		fmt.Println("Error fetching active subscriptions:", err)
-		return
-	}
-
-	now := time.Now().UTC()
-	horizon := now.Add(96 * time.Hour)
-
-	for _, sub := range subs {
-		// 2) Если NextPlannedDate == nil или уже дальше горизонта — пропустить
-		if sub.NextPlannedDate == nil || sub.NextPlannedDate.After(horizon) {
-			continue
-		}
-
-		// 3) Вычислить все подходящие даты в окне [now..horizon]
-		matches := s.NextDates(sub.Schedule, now, horizon)
-
-		// 4) Если sub.NextPlannedDate совпадает с одной из дат — создаём заказ
-		shouldCreate := false
-		for _, m := range matches {
-			if sub.NextPlannedDate.Truncate(24 * time.Hour).Equal(m) {
-				if err := s.orderService.CreateOrderFromSubscription(ctx, sub, ""); err != nil {
-					fmt.Println("Error creating order:", err)
-					// не выходим, a пытаемся лишь один раз для текущей даты
-				}
-				shouldCreate = true
-				break
-			}
-		}
-
-		// 5) Пересчитать NextPlannedDate (берём первый элемент из futureDates)
-		nextWindowStart := horizon.AddDate(0, 0, 1)
-		var futureDates []time.Time
-		if nextWindowStart.Before(sub.EndDate) || nextWindowStart.Equal(sub.EndDate) {
-			futureDates = s.NextDates(sub.Schedule, nextWindowStart, sub.EndDate)
-		}
-		update := bson.M{}
-		if len(futureDates) > 0 {
-			next := futureDates[0]
-			update["next_planned_date"] = next
-		} else {
-			// Больше нет будущих дат — подписку нужно пометить expired
-			update["next_planned_date"] = nil
-			update["status"] = models.StatusExpired
-		}
-
-		// Сохраняем новое NextPlannedDate и, возможно, новый статус
-		if err := s.repo.Update(ctx, sub.ID, update); err != nil {
-			fmt.Println("Error updating subscription:", err)
-		}
-		_ = shouldCreate // только чтобы не ругался линтер; флаг можно использовать для логирования
-	}
-}
-
-// Update даёт возможность администратору менять параметры подписки:
-// новые end_date, days_of_week, price и автоматически обновляет updated_at.
+// Update меняет поля подписки (админ может менять end_date, days_of_week и т. д.).
 func (s *SubscriptionService) Update(ctx context.Context, id primitive.ObjectID, update bson.M) error {
 	update["updated_at"] = time.Now().UTC()
 	return s.repo.Update(ctx, id, update)
 }
 
-// Cancel снимает подписку с активности.
+// Cancel переводит подписку в статус Canceled.
 func (s *SubscriptionService) Cancel(ctx context.Context, id primitive.ObjectID) error {
 	return s.Update(ctx, id, bson.M{"status": models.StatusCanceled})
 }
 
-// GetAll используется, например, для админки, чтобы вывести все подписки.
+// GetAll возвращает все подписки (например, для админки).
 func (s *SubscriptionService) GetAll(ctx context.Context) ([]models.Subscription, error) {
 	return s.repo.GetAll(ctx)
 }
@@ -237,7 +168,7 @@ func (s *SubscriptionService) GetByClient(ctx context.Context, clientIDHex strin
 	return s.repo.GetByClient(ctx, clientIDHex)
 }
 
-// FindExpiringOn возвращает подписки, у которых EndDate == targetDate.
+// FindExpiringOn находит подписки, у которых EndDate == targetDate (12:00:00 UTC).
 func (s *SubscriptionService) FindExpiringOn(ctx context.Context, targetDate time.Time) ([]models.Subscription, error) {
 	return s.repo.FindExpiringOn(ctx, targetDate)
 }
@@ -247,11 +178,91 @@ func (s *SubscriptionService) FindExpired(ctx context.Context, before time.Time)
 	return s.repo.FindExpired(ctx, before)
 }
 
-// UpdateStatus обновляет статус подписки (например, ставит StatusExpired).
+// UpdateStatus меняет статус подписки (например, переводит в Expired).
 func (s *SubscriptionService) UpdateStatus(ctx context.Context, id primitive.ObjectID, status models.SubscriptionStatus) error {
-	return s.repo.Update(ctx, id, bson.M{"status": status})
+	return s.repo.Update(ctx, id, bson.M{"status": status, "updated_at": time.Now().UTC()})
 }
 
+// GetByID возвращает подписку по ID.
 func (s *SubscriptionService) GetByID(ctx context.Context, id primitive.ObjectID) (*models.Subscription, error) {
 	return s.repo.GetByID(ctx, id)
+}
+
+// ProcessDailyOrders — cron-задача, выполняемая ежедневно.
+// 1) Уведомляет о том, что подписка истекает через 3 дня.
+// 2) Создаёт заказы по расписанию (NextPlannedDate ≤ horizon).
+// 3) Перекладывает NextPlannedDate на следующий «цикл» или переводит подписку в Expired.
+func (s *SubscriptionService) ProcessDailyOrders(ctx context.Context) {
+	now := time.Now().UTC()
+
+	// ----- 1. Уведомляем за 3 дня до истечения -----
+	target := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, 3)
+	expiringSubs, err := s.repo.FindExpiringOn(ctx, target)
+	if err != nil {
+		fmt.Println("Error fetching expiring subscriptions:", err)
+	} else {
+		for _, sub := range expiringSubs {
+			go func(su models.Subscription) {
+				_ = utils.SendNotificationEvent(context.Background(), utils.NotificationEvent{
+					UserID:    su.UserID.Hex(),
+					Role:      "client",
+					Type:      "subscription_expiring",
+					ExtraData: map[string]string{"subscription_id": su.ID.Hex(), "end_date": su.EndDate.Format("2006-01-02")},
+				})
+			}(sub)
+		}
+	}
+
+	// ----- 2. Создаём заказы по расписанию -----
+	activeSubs, err := s.repo.GetActiveSubscriptions(ctx)
+	if err != nil {
+		fmt.Println("Error fetching active subscriptions:", err)
+		return
+	}
+
+	horizon := now.Add(96 * time.Hour) // 96h = 4 дня вперёд
+
+	for _, sub := range activeSubs {
+		// Пропускаем, если NextPlannedDate nil или дальше горизонта
+		if sub.NextPlannedDate == nil || sub.NextPlannedDate.After(horizon) {
+			continue
+		}
+
+		// Находим все даты в окне [now..horizon]
+		matches := s.NextDates(sub.Schedule, now, horizon)
+		created := false
+
+		for _, m := range matches {
+			if sub.NextPlannedDate.Truncate(24 * time.Hour).Equal(m) {
+				// Создаём заказ из подписки
+				if err := s.orderService.CreateOrderFromSubscription(ctx, sub, ""); err != nil {
+					fmt.Println("Error creating order:", err)
+				}
+				created = true
+				break
+			}
+		}
+
+		// Пересчитываем NextPlannedDate на следующий цикл
+		nextWindowStart := horizon.AddDate(0, 0, 1)
+		var futureDates []time.Time
+		if !nextWindowStart.After(sub.EndDate) {
+			futureDates = s.NextDates(sub.Schedule, nextWindowStart, sub.EndDate)
+		}
+		update := bson.M{}
+		if len(futureDates) > 0 {
+			update["next_planned_date"] = futureDates[0]
+		} else {
+			// Больше нет дат → подписку помечаем Expired
+			update["next_planned_date"] = nil
+			update["status"] = models.StatusExpired
+		}
+
+		if err := s.repo.Update(ctx, sub.ID, update); err != nil {
+			fmt.Println("Error updating subscription:", err)
+		}
+
+		// (не обязательно) можно логировать создание
+		_ = created
+	}
 }
