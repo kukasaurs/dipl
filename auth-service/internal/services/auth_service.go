@@ -35,7 +35,7 @@ type UserRepository interface {
 	GetByRole(role string) ([]*models.User, error)
 	CountUsers(ctx context.Context) (int64, error)
 	GetRating(userID primitive.ObjectID) (float64, error)
-	AddRating(userID primitive.ObjectID, rating int) error
+	AddRating(ctx context.Context, cleanerID string, rating int) error
 }
 
 func NewAuthService(userRepo UserRepository, jwtUtil *utils.JWTUtil, email EmailService, redis *utils.RedisClient, config *config.Config) *AuthService {
@@ -259,11 +259,16 @@ func (s *AuthService) GetTotalUsers(ctx context.Context) (int64, error) {
 	return s.userRepo.CountUsers(ctx)
 }
 
-func (s *AuthService) AddRating(userID primitive.ObjectID, rating int) error {
-	if rating < 1 || rating > 5 {
-		return errors.New("rating must be between 1 and 5")
+func (s *AuthService) AddBulkRatings(ctx context.Context, clientID string, cleanerIDs []string, rating int, comment string) error {
+	log.Printf("[DEBUG auth] AddBulkRatings called for client %s, cleanerIDs=%v, rating=%d", clientID, cleanerIDs, rating)
+	for _, cid := range cleanerIDs {
+		log.Printf("[DEBUG auth] about to AddRating for cleaner %s", cid)
+		if err := s.userRepo.AddRating(ctx, cid, rating); err != nil {
+			return fmt.Errorf("save rating for cleaner %s: %w", cid, err)
+		}
+		log.Printf("[DEBUG auth] successfully added rating for cleaner %s", cid)
 	}
-	return s.userRepo.AddRating(userID, rating)
+	return nil
 }
 
 func (s *AuthService) GetRating(userID primitive.ObjectID) (float64, error) {

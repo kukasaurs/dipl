@@ -17,7 +17,7 @@ func ConfigureServiceProxies(router *gin.RouterGroup) {
 		{"/support", "http://support-service:8008", "/api/support", "/support"},
 		{"/subscriptions", "http://subscription-service:8004", "/api/subscriptions", "/subscriptions"},
 		{"/services", "http://cleaning-details-service:8003", "/api/services", "/api/services"},
-		{"/review", "http://review-media-service:8007", "/api/review", "/reviews"},
+		{"/media", "http://media-service:8007", "/api/media", "/media"},
 		{"/users", "http://user-management-service:8006", "/api/users", "/users"},
 	}
 

@@ -19,9 +19,9 @@ type User struct {
 	DateOfBirth   time.Time          `bson:"date_of_birth" validate:"omitempty"`
 	Gender        string             `bson:"gender" validate:"omitempty,oneof=male female other"`
 	ResetRequired bool               `bson:"reset_required"`
-	Ratings       []int              `bson:"ratings" validate:"omitempty"`
-	AverageRating float64            `bson:"average_rating" validate:"omitempty"`
-	DeviceToken   string             `json:"device_token"`
+	RatingCount   int                `bson:"rating_count,omitempty" json:"rating_count,omitempty"`
+	RatingSum     int                `bson:"rating_sum,omitempty" json:"rating_sum,omitempty"`
+	AverageRating float64            `bson:"average_rating,omitempty" json:"average_rating,omitempty"`
 }
 
 func (u *User) HashPassword() error {

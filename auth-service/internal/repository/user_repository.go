@@ -3,6 +3,7 @@ package repositories
 import (
 	"cleaning-app/auth-service/internal/models"
 	"context"
+	"fmt"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -143,28 +144,44 @@ func (r *UserRepository) GetRating(userID primitive.ObjectID) (float64, error) {
 	return user.AverageRating, err
 }
 
-func (r *UserRepository) AddRating(userID primitive.ObjectID, rating int) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	_, err := r.collection.UpdateOne(ctx, bson.M{"_id": userID}, bson.M{
-		"$set": bson.M{
-			"ratings": bson.M{"$concatArrays": []interface{}{
-				bson.M{"$ifNull": []interface{}{"$ratings", bson.A{}}},
-				bson.A{rating},
-			}},
-		},
-	})
-
+func (r *UserRepository) AddRating(ctx context.Context, cleanerID string, rating int) error {
+	oid, err := primitive.ObjectIDFromHex(cleanerID)
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid cleanerID %q: %w", cleanerID, err)
 	}
 
-	_, err = r.collection.UpdateOne(ctx, bson.M{"_id": userID}, mongo.Pipeline{
-		{{"$set", bson.M{
-			"average_rating": bson.M{"$avg": "$ratings"},
-		}}},
-	})
+	// 1) Инкрементируем count и sum
+	update := bson.M{
+		"$inc": bson.M{
+			"rating_count": 1,
+			"rating_sum":   rating,
+		},
+	}
+	// Если вы хотите сразу пересчитать average в одном запросе и ваша MongoDB ≥4.2, можно использовать aggregation pipeline update:
+	// update = mongo.Pipeline{
+	//   {{ "$set": bson.M{
+	//       "rating_count": bson.M{"$add": []interface{}{"$rating_count", 1}},
+	//       "rating_sum":   bson.M{"$add": []interface{}{"$rating_sum", rating}},
+	//   }}},
+	//   {{ "$set": bson.M{"average_rating": bson.M{"$divide": []interface{}{"$rating_sum", "$rating_count"}}}}},
+	// }
 
-	return err
+	_, err = r.collection.UpdateByID(ctx, oid, update)
+	if err != nil {
+		return fmt.Errorf("inc sum/count: %w", err)
+	}
+
+	// 2) Получаем свежие значения для подсчёта среднего
+	var u models.User
+	if err := r.collection.FindOne(ctx, bson.M{"_id": oid}).Decode(&u); err != nil {
+		return fmt.Errorf("fetch user for avg: %w", err)
+	}
+	avg := float64(u.RatingSum) / float64(u.RatingCount)
+
+	// 3) Обновляем поле average_rating
+	if _, err := r.collection.UpdateByID(ctx, oid, bson.M{"$set": bson.M{"average_rating": avg}}); err != nil {
+		return fmt.Errorf("set average_rating: %w", err)
+	}
+
+	return nil
 }

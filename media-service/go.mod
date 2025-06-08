@@ -1,4 +1,4 @@
-module cleaning-app/review-media-service
+module cleaning-app/media-service
 
 go 1.24
 
@@ -44,14 +44,9 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-require (
-	github.com/minio/minio-go/v7 v7.0.91
-	github.com/redis/go-redis/v9 v9.9.0
-)
+require github.com/minio/minio-go/v7 v7.0.91
 
 require (
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect

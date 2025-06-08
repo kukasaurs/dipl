@@ -43,11 +43,33 @@ type OrderService interface {
 	FinishOrder(ctx context.Context, orderID primitive.ObjectID, cleanerID primitive.ObjectID, photoURL string) error
 	GetOrderForCleaner(ctx context.Context, orderID primitive.ObjectID, cleanerID primitive.ObjectID) (*models.Order, error)
 	GetOrdersForCleaner(ctx context.Context, cleanerID primitive.ObjectID) ([]models.Order, error)
+	AddReview(ctx context.Context, orderID string, rating int, comment string, authHeader string) error
 }
 
 // NewOrderHandler создаёт новый хендлер для заказов и получает конфиг
 func NewOrderHandler(service OrderService, rdb *redis.Client, cfg *config.Config) *OrderHandler {
 	return &OrderHandler{service: service, rdb: rdb, cfg: cfg}
+}
+
+// POST /orders/:id/review
+func (h *OrderHandler) AddOrderReview(c *gin.Context) {
+	orderID := c.Param("id")
+	var req struct {
+		Rating  int    `json:"rating" binding:"required,min=1,max=5"`
+		Comment string `json:"comment"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	authHeader := c.GetHeader("Authorization")
+
+	if err := h.service.AddReview(c.Request.Context(), orderID, req.Rating, req.Comment, authHeader); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Status(http.StatusCreated)
 }
 
 func (h *OrderHandler) GetOrderByIDHTTP(c *gin.Context) {

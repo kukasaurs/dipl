@@ -10,11 +10,11 @@ type Config struct {
 	MinioEndpoint          string
 	MinioAccessKey         string
 	MinioSecretKey         string
-	BucketName             string
+	MinioBucket            string
 	JWTSecret              string
 	NotificationServiceURL string
 	AuthServiceURL         string
-	NotifiServiceURL       string
+	OrderServiceURL        string
 }
 
 func LoadConfig() (*Config, error) {
@@ -24,10 +24,10 @@ func LoadConfig() (*Config, error) {
 		MinioEndpoint:          os.Getenv("MINIO_ENDPOINT"),
 		MinioAccessKey:         os.Getenv("MINIO_ACCESS_KEY"),
 		MinioSecretKey:         os.Getenv("MINIO_SECRET_KEY"),
-		BucketName:             os.Getenv("MINIO_BUCKET"),
+		MinioBucket:            os.Getenv("MINIO_BUCKET"),
 		JWTSecret:              os.Getenv("JWT_SECRET"),
 		NotificationServiceURL: os.Getenv("NOTIFICATION_SERVICE_URL"),
 		AuthServiceURL:         os.Getenv("AUTH_SERVICE_URL"),
-		NotifiServiceURL:       os.Getenv("NOTIFI_SERVICE_URL"),
+		OrderServiceURL:        os.Getenv("ORDER_SERVICE_URL"),
 	}, nil
 }
