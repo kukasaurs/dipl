@@ -123,7 +123,6 @@ services:
       - mongodb
       - auth-service
   media-service:
-    container_name: media-service
     build: ./media-service
     ports:
       - "8007:8007"
