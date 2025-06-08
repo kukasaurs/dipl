@@ -61,6 +61,7 @@ func main() {
 		media.GET("/reports/:orderId", handler.GetReports)
 		media.POST("/avatar", handler.UploadAvatar)
 		media.GET("/avatars", handler.GetAvatars)
+		media.GET("/presigned/:id", handler.GetPresignedURLByID)
 	}
 
 	server := &http.Server{

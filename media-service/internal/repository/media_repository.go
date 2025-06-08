@@ -4,6 +4,7 @@ import (
 	"cleaning-app/media-service/internal/models"
 	"context"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"time"
 )
@@ -21,7 +22,18 @@ func (r *MediaRepository) Save(ctx context.Context, m *models.Media) error {
 	_, err := r.col.InsertOne(ctx, m)
 	return err
 }
-
+func (r *MediaRepository) FindByID(ctx context.Context, id string) (*models.Media, error) {
+	objID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, err
+	}
+	var media models.Media
+	err = r.col.FindOne(ctx, bson.M{"_id": objID}).Decode(&media)
+	if err != nil {
+		return nil, err
+	}
+	return &media, nil
+}
 func (r *MediaRepository) FindByOrderID(ctx context.Context, orderID string) ([]models.Media, error) {
 	cursor, err := r.col.Find(ctx, bson.M{"order_id": orderID, "type": models.ReportMedia})
 	if err != nil {

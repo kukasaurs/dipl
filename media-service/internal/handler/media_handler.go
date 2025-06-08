@@ -18,6 +18,8 @@ type MediaService interface {
 	Upload(ctx context.Context, reader io.Reader, size int64, contentType, filename string, mType models.MediaType, orderID, userID string) (string, error)
 	GetReports(ctx context.Context, orderID string) ([]models.Media, error)
 	GetAvatars(ctx context.Context, userID string) ([]models.Media, error)
+	GeneratePresignedURL(ctx context.Context, objectName string) (string, error)
+	GetMediaByID(ctx context.Context, id string) (*models.Media, error)
 }
 
 type OrderServiceClient interface {
@@ -27,7 +29,30 @@ type OrderServiceClient interface {
 func NewMediaHandler(svc MediaService, orderClient OrderServiceClient) *MediaHandler {
 	return &MediaHandler{svc: svc, orderClient: orderClient}
 }
+func (h *MediaHandler) GetPresignedURLByID(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
+		return
+	}
 
+	media, err := h.svc.GetMediaByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "media not found"})
+		return
+	}
+
+	url, err := h.svc.GeneratePresignedURL(c.Request.Context(), media.ObjectKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"file_name": media.FileName,
+		"url":       url,
+	})
+}
 func (h *MediaHandler) UploadReport(c *gin.Context) {
 	orderID := c.Param("orderId")
 	authHdr := c.GetHeader("Authorization")
