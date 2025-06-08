@@ -29,7 +29,6 @@ type AuthService interface {
 	GetTotalUsers(ctx context.Context) (int64, error)
 	GetRating(userID primitive.ObjectID) (float64, error)
 	ResendTemporaryPassword(email string) error
-	GoogleLogin(idToken string) (string, error)
 	AddBulkRatings(ctx context.Context, customerID string, cleanerIDs []string, rating int, comment string) error
 }
 
@@ -55,18 +54,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	go func() {
-		payload := utils.NotificationPayload{
-			RecipientID:   user.ID.Hex(),
-			RecipientRole: "user",
-			Title:         "Добро пожаловать!",
-			Body:          "Благодарим за регистрацию. Приятного пользования нашим сервисом!",
-			Type:          "welcome",
-			Channel:       "email",
-			Data: map[string]interface{}{
-				"user_email": user.Email,
-			},
-		}
-		_ = utils.SendNotification(context.Background(), payload)
+		_ = utils.SendNotificationEvent(context.Background(), utils.NotificationEvent{
+			UserID:    user.ID.Hex(),
+			Role:      "client",
+			Type:      "welcome",
+			ExtraData: map[string]string{"user_email": user.Email},
+		})
 	}()
 
 	c.JSON(http.StatusOK, gin.H{"token": token})
@@ -139,20 +132,15 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	// Уведомление об обновлении профиля
 	go func() {
-		payload := utils.NotificationPayload{
-			RecipientID:   userID.Hex(),
-			RecipientRole: "user",
-			Title:         "Профиль обновлён",
-			Body:          "Ваш профиль был успешно обновлён.",
-			Type:          "profile_updated",
-			Channel:       "email",
-			Data: map[string]interface{}{
-				"user_id": userID.Hex(),
-			},
-		}
-		_ = utils.SendNotification(context.Background(), payload)
+		_ = utils.SendNotificationEvent(context.Background(), utils.NotificationEvent{
+			UserID:    userID.Hex(),
+			Role:      "client",
+			Type:      "profile_updated", // если добавишь такой тип в notification-service
+			Title:     "Profile updated",
+			Message:   "Your profile has been updated",
+			ExtraData: map[string]string{"user_id": userID.Hex()},
+		})
 	}()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Profile updated successfully"})
@@ -176,18 +164,11 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 
 	// Уведомление о смене пароля
 	go func() {
-		payload := utils.NotificationPayload{
-			RecipientID:   userID.Hex(),
-			RecipientRole: "user",
-			Title:         "Пароль изменён",
-			Body:          "Ваш пароль был успешно обновлён.",
-			Type:          "password_changed",
-			Channel:       "email",
-			Data: map[string]interface{}{
-				"user_id": userID.Hex(),
-			},
-		}
-		_ = utils.SendNotification(context.Background(), payload)
+		_ = utils.SendNotificationEvent(context.Background(), utils.NotificationEvent{
+			UserID: userID.Hex(),
+			Role:   "client",
+			Type:   "security",
+		})
 	}()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
@@ -213,22 +194,6 @@ func (h *AuthHandler) Validate(c *gin.Context) {
 	})
 }
 
-func (h *AuthHandler) GoogleLogin(c *gin.Context) {
-	var req struct {
-		IDToken string `json:"id_token"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
-		return
-	}
-	token, err := h.authService.GoogleLogin(req.IDToken)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"token": token})
-}
-
 func (h *AuthHandler) ResendPassword(c *gin.Context) {
 	var req struct {
 		Email string `json:"email" binding:"required,email"`
@@ -244,24 +209,6 @@ func (h *AuthHandler) ResendPassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	// Уведомление о повторной отправке временного пароля
-	go func() {
-		// Предполагаем, что в сервисе ResendTemporaryPassword уже отправляется письмо,
-		// но дублирующее пуш-уведомление может быть полезно.
-		payload := utils.NotificationPayload{
-			RecipientID:   "", // если нужно отправить всем менеджерам, иначе оставить пустым
-			RecipientRole: "user",
-			Title:         "Временный пароль отправлен",
-			Body:          "На вашу почту был отправлен новый временный пароль.",
-			Type:          "temporary_password_resent",
-			Channel:       "email",
-			Data: map[string]interface{}{
-				"user_email": req.Email,
-			},
-		}
-		_ = utils.SendNotification(context.Background(), payload)
-	}()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Temporary password sent to email"})
 }
@@ -284,22 +231,6 @@ func (h *AuthHandler) SetInitialPassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	// Уведомление о первом назначении пароля
-	go func() {
-		payload := utils.NotificationPayload{
-			RecipientID:   userID.Hex(),
-			RecipientRole: "user",
-			Title:         "Пароль установлен",
-			Body:          "Ваш временный пароль был успешно изменён на постоянный.",
-			Type:          "initial_password_set",
-			Channel:       "email",
-			Data: map[string]interface{}{
-				"user_id": userID.Hex(),
-			},
-		}
-		_ = utils.SendNotification(context.Background(), payload)
-	}()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password set successfully"})
 }

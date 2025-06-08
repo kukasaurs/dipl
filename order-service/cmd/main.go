@@ -106,7 +106,7 @@ func main() {
 			protectedCleaner.GET("/orders", orderHandler.GetCleanerOrders)
 			protectedCleaner.GET("/orders/:id", orderHandler.GetCleanerOrder)
 			protectedCleaner.GET("/:id/jobs_done", orderHandler.GetJobsDone)
-			//protectedCleaner.POST("/:id/finish", orderHandler.FinishOrder)
+
 		}
 
 	}

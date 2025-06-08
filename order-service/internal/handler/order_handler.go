@@ -542,46 +542,6 @@ func (h *OrderHandler) GetCleanerOrder(c *gin.Context) {
 	c.JSON(http.StatusOK, order)
 }
 
-// FinishOrder помечает заказ как «completed» и сохраняет фото. Файл приходит в multipart/form-data с ключом "photo".
-//func (h *OrderHandler) FinishOrder(c *gin.Context) {
-//	// 1) cleanerID из JWT
-//	cleanerHex := c.GetString("userId")
-//	cleanerID, err := primitive.ObjectIDFromHex(cleanerHex)
-//	if err != nil {
-//		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid cleaner ID"})
-//		return
-//	}
-//	// 2) orderID из path
-//	idHex := c.Param("id")
-//	orderID, err := primitive.ObjectIDFromHex(idHex)
-//	if err != nil {
-//		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid order ID"})
-//		return
-//	}
-//	// 3) Получаем файл из формы
-//	file, err := c.FormFile("photo")
-//	if err != nil {
-//		c.JSON(http.StatusBadRequest, gin.H{"error": "photo is required"})
-//		return
-//	}
-//	// 4) Загружаем в Review-Media-Service (утилита utils.UploadFileToMediaService делает HTTP-запрос к вашему микросервису и возвращает URL).
-//	url, err := utils.UploadFileToMediaService(c.Request.Context(), h.mediaBaseURL, file)
-//	if err != nil {
-//		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-//		return
-//	}
-//	// 5) Обновляем заказ в БД через Service
-//	if err := h.service.FinishOrder(c.Request.Context(), orderID, cleanerID, url); err != nil {
-//		if err == service.ErrForbidden {
-//			c.JSON(http.StatusForbidden, gin.H{"error": "not assigned to this order"})
-//			return
-//		}
-//		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-//		return
-//	}
-//	c.JSON(http.StatusOK, gin.H{"ok": true, "url": url})
-//}
-
 // GetJobsDone возвращает число завершённых заказов для клинера с :id (без привязки к JWT).
 func (h *OrderHandler) GetJobsDone(c *gin.Context) {
 	// 1) Извлекаем cleanerID из path

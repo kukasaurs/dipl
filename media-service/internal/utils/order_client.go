@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 )
@@ -27,7 +28,7 @@ func NewOrderClient(baseURL string) *OrderServiceClient {
 }
 
 // IsCleaner проверяет, что userID есть в cleaner_id заказа
-func (oc *OrderServiceClient) IsCleaner(ctx context.Context, orderID, authHeader string, ) (bool, error) {
+func (oc *OrderServiceClient) IsCleaner(ctx context.Context, orderID, authHeader string) (bool, error) {
 	url := fmt.Sprintf("%s/orders/%s", oc.BaseURL, orderID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -47,4 +48,28 @@ func (oc *OrderServiceClient) IsCleaner(ctx context.Context, orderID, authHeader
 	}
 	// любая другая — отказ
 	return false, nil
+}
+func (c *OrderServiceClient) HasReports(orderID, authHeader string) (bool, error) {
+	url := fmt.Sprintf("%s/media/reports/%s", c.BaseURL, orderID)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Authorization", authHeader)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("media service returned %d", resp.StatusCode)
+	}
+
+	var medias []struct{ URL string }
+	if err := json.NewDecoder(resp.Body).Decode(&medias); err != nil {
+		return false, err
+	}
+	return len(medias) > 0, nil
 }
