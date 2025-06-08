@@ -173,6 +173,19 @@ func (r *orderRepository) UnassignCleaner(ctx context.Context, id primitive.Obje
 	return err
 }
 
+func (r *orderRepository) SaveOrderReview(ctx context.Context, orderID primitive.ObjectID, rating int, comment string) error {
+	update := bson.M{
+		"$set": bson.M{
+			"rating":         rating,
+			"review_comment": comment,
+			"updated_at":     time.Now().UTC(),
+		},
+	}
+	filter := bson.M{"_id": orderID}
+	_, err := r.collection.UpdateOne(ctx, filter, update)
+	return err
+}
+
 func (r *orderRepository) CountOrders(ctx context.Context, filter interface{}) (int64, error) {
 	return r.collection.CountDocuments(ctx, filter)
 }

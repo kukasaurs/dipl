@@ -14,6 +14,14 @@ services:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
+  minio:
+    image: minio/minio
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
   api-gateway:
     build: ./api-gateway
     ports:
@@ -30,7 +38,7 @@ services:
       - subscription-service
       - payment-service
       - user-management-service
-      - review-media-service
+      - media-service
       - support-service
   auth-service:
     build: ./auth-service
@@ -114,8 +122,9 @@ services:
     depends_on:
       - mongodb
       - auth-service
-  review-media-service:
-    build: ./review-media-service
+  media-service:
+    container_name: media-service
+    build: ./media-service
     ports:
       - "8007:8007"
     environment:
@@ -126,6 +135,7 @@ services:
     depends_on:
       - mongodb
       - auth-service
+      - minio
   support-service:
     build: ./support-service
     ports:

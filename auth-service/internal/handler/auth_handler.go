@@ -2,10 +2,8 @@ package handlers
 
 import (
 	"cleaning-app/auth-service/internal/models"
-	"cleaning-app/auth-service/internal/services"
 	"cleaning-app/auth-service/internal/utils"
 	"context"
-	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -29,13 +27,13 @@ type AuthService interface {
 	Logout(tokenString string) error
 	GetByRole(role string) ([]*models.User, error)
 	GetTotalUsers(ctx context.Context) (int64, error)
-	AddRating(userID primitive.ObjectID, rating int) error
 	GetRating(userID primitive.ObjectID) (float64, error)
 	ResendTemporaryPassword(email string) error
 	GoogleLogin(idToken string) (string, error)
+	AddBulkRatings(ctx context.Context, customerID string, cleanerIDs []string, rating int, comment string) error
 }
 
-func NewAuthHandler(authService *services.AuthService) *AuthHandler {
+func NewAuthHandler(authService AuthService) *AuthHandler {
 	return &AuthHandler{authService: authService}
 }
 
@@ -56,7 +54,6 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// Уведомление «Добро пожаловать»
 	go func() {
 		payload := utils.NotificationPayload{
 			RecipientID:   user.ID.Hex(),
@@ -341,42 +338,31 @@ func (h *AuthHandler) GetTotalUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"totalUsers": count})
 }
 
-func (h *AuthHandler) AddRating(c *gin.Context) {
-	userIDStr, _ := c.Get("user_id")
-	userID, _ := primitive.ObjectIDFromHex(userIDStr.(string))
-
+func (h *AuthHandler) AddBulkRatings(c *gin.Context) {
 	var req struct {
-		Rating int `json:"rating" binding:"required,min=1,max=5"`
+		CleanerIDs []string `json:"cleaner_ids" binding:"required,min=1,dive,required"`
+		Rating     int      `json:"rating" binding:"required,min=1,max=5"`
+		Comment    string   `json:"comment"`
 	}
-
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid rating"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if err := h.authService.AddRating(userID, req.Rating); err != nil {
+	userIDIface, ok := c.Get("user_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user_id not found"})
+		return
+	}
+	clientID := userIDIface.(string)
+	ctx := c.Request.Context()
+
+	if err := h.authService.AddBulkRatings(ctx, clientID, req.CleanerIDs, req.Rating, req.Comment); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Уведомление о добавлении рейтинга (например, менеджерам)
-	go func() {
-		payload := utils.NotificationPayload{
-			RecipientID:   "",
-			RecipientRole: "manager",
-			Title:         "Новый рейтинг пользователя",
-			Body:          fmt.Sprintf("Пользователь %s поставил рейтинг %d", userID.Hex(), req.Rating),
-			Type:          "new_user_rating",
-			Channel:       "email",
-			Data: map[string]interface{}{
-				"user_id": userID.Hex(),
-				"rating":  req.Rating,
-			},
-		}
-		_ = utils.SendNotification(context.Background(), payload)
-	}()
-
-	c.JSON(http.StatusOK, gin.H{"message": "Rating added successfully"})
+	c.JSON(http.StatusOK, gin.H{"message": "Ratings added to all cleaners"})
 }
 
 func (h *AuthHandler) GetRating(c *gin.Context) {

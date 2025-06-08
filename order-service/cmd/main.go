@@ -56,9 +56,8 @@ func main() {
 
 	// 4. Инициализация сервисов
 	orderRepo := repository.NewOrderRepository(db)
-	orderService := services.NewOrderService(orderRepo, rdb, cfg)
-
-	// Передаём cfg в OrderHandler для корректной отправки уведомлений
+	authClient := utils.NewAuthClient(cfg.AuthServiceURL)
+	orderService := services.NewOrderService(orderRepo, rdb, cfg, authClient)
 	orderHandler := handler.NewOrderHandler(orderService, rdb, cfg)
 
 	// 5. Старт фонового кэш-рефрешера
@@ -85,6 +84,7 @@ func main() {
 		orders.GET("/:id", orderHandler.GetOrderByIDHTTP)
 		orders.PUT("/:id", orderHandler.UpdateOrder)
 		orders.DELETE("/:id", orderHandler.DeleteOrder)
+		orders.POST("/:id/review", orderHandler.AddOrderReview)
 
 		protected := orders.Group("/")
 		protected.Use(utils.RequireRoles("manager", "admin"))

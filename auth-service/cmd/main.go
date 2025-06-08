@@ -93,7 +93,7 @@ func main() {
 			protected.PUT("/set-initial-password", authHandler.SetInitialPassword)
 
 			protected.GET("/total-users", authHandler.GetTotalUsers)
-			protected.POST("/add-rating", authHandler.AddRating)
+			protected.POST("/add-ratings", authHandler.AddBulkRatings)
 			protected.GET("/rating", authHandler.GetRating)
 		}
 	}

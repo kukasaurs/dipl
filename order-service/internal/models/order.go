@@ -32,6 +32,8 @@ type Order struct {
 	CreatedAt      time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt      time.Time          `bson:"updated_at" json:"updated_at"`
 	TotalPrice     float64            `bson:"total_price" json:"total_price"`
+	Rating         *int               `bson:"rating,omitempty" json:"rating,omitempty"`
+	ReviewComment  *string            `bson:"review_comment,omitempty" json:"review_comment,omitempty"`
 }
 
 type Service struct {

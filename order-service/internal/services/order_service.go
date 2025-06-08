@@ -36,17 +36,43 @@ type OrderRepository interface {
 
 	FindByCleaner(ctx context.Context, cleanerID primitive.ObjectID) ([]models.Order, error)
 	CountCompletedByCleaner(ctx context.Context, cleanerID primitive.ObjectID) (int64, error)
+	SaveOrderReview(ctx context.Context, orderID primitive.ObjectID, rating int, comment string) error
+}
+
+type AuthClient interface {
+	AddBulkRatings(ctx context.Context, cleanerIDs []string, rating int, comment string, authHeader string) error
 }
 
 type orderService struct {
 	repo  OrderRepository
 	redis *redis.Client
 	cfg   *config.Config
+	auth  AuthClient
 }
 
 // NewOrderService конструирует сервис заказов.
-func NewOrderService(repo OrderRepository, rdb *redis.Client, cfg *config.Config) *orderService {
-	return &orderService{repo: repo, redis: rdb, cfg: cfg}
+func NewOrderService(repo OrderRepository, rdb *redis.Client, cfg *config.Config, auth AuthClient) *orderService {
+	return &orderService{repo: repo, redis: rdb, cfg: cfg, auth: auth}
+}
+
+func (s *orderService) AddReview(ctx context.Context, orderID string, rating int, comment string, authHeader string) error {
+	// 1) парсим ID заказа
+	oid, err := primitive.ObjectIDFromHex(orderID)
+	if err != nil {
+		return err
+	}
+	// 2) обновляем заказ
+	if err := s.repo.SaveOrderReview(ctx, oid, rating, comment); err != nil {
+		return err
+	}
+	// 3) тянем сам заказ, чтобы получить список клинеров
+	order, err := s.repo.GetByID(ctx, oid)
+	if err != nil {
+		return err
+	}
+	// 4) отправляем рейтинг всем клинерам в Auth Service
+	//    (предполагаю, что у вас есть клиент для этого, например в utils или через service_client)
+	return s.auth.AddBulkRatings(ctx, order.CleanerID, rating, comment, authHeader)
 }
 
 // clearCache invalidates Redis-кэш.
