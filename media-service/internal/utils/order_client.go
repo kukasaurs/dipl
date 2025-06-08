@@ -27,10 +27,7 @@ func NewOrderClient(baseURL string) *OrderServiceClient {
 }
 
 // IsCleaner проверяет, что userID есть в cleaner_id заказа
-func (oc *OrderServiceClient) IsCleaner(
-	ctx context.Context,
-	orderID, authHeader string,
-) (bool, error) {
+func (oc *OrderServiceClient) IsCleaner(ctx context.Context, orderID, authHeader string, ) (bool, error) {
 	url := fmt.Sprintf("%s/orders/%s", oc.BaseURL, orderID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
