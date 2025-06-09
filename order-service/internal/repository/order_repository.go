@@ -131,29 +131,12 @@ func (r *orderRepository) AddCleanerToOrder(ctx context.Context, orderID primiti
 
 // RemoveCleanerFromOrder убирает одного клинера из массива cleaner_id.
 // Если после этого массив станет пустым, переводит status обратно в pending.
-func (r *orderRepository) RemoveCleanerFromOrder(ctx context.Context, orderID primitive.ObjectID, cleanerID string) error {
-	// Удаляем данного клинера из массива:
-	update := bson.M{
-		"$pull": bson.M{"cleaner_id": cleanerID},
-		"$set":  bson.M{"updated_at": time.Now()},
-	}
-	_, err := r.collection.UpdateByID(ctx, orderID, update)
-	if err != nil {
-		return err
-	}
-	// После pull проверим, остались ли ещё клинеры в заказе:
-	order, err := r.GetByID(ctx, orderID)
-	if err != nil {
-		return err
-	}
-	if len(order.CleanerID) == 0 {
-		// Если нет ни одного, сбрасываем статус обратно в pending
-		_, err = r.collection.UpdateByID(ctx, orderID, bson.M{
-			"$set": bson.M{"status": models.StatusPending, "updated_at": time.Now()},
-		})
-		return err
-	}
-	return nil
+func (r *orderRepository) RemoveCleanerFromOrder(ctx context.Context, id primitive.ObjectID, cleanerID string) error {
+	_, err := r.collection.UpdateOne(ctx,
+		bson.M{"_id": id},
+		bson.M{"$pull": bson.M{"cleaner_id": cleanerID}},
+	)
+	return err
 }
 
 // -------------------------------------------------------
@@ -169,6 +152,19 @@ func (r *orderRepository) UnassignCleaner(ctx context.Context, id primitive.Obje
 		"$set":   bson.M{"status": models.StatusPending, "updated_at": time.Now()},
 	}
 	_, err := r.collection.UpdateByID(ctx, id, update)
+	return err
+}
+
+func (r *orderRepository) UpdateStatus(ctx context.Context, id primitive.ObjectID, status models.OrderStatus) error {
+	_, err := r.collection.UpdateOne(ctx,
+		bson.M{"_id": id},
+		bson.M{
+			"$set": bson.M{
+				"status":     status,
+				"updated_at": time.Now(),
+			},
+		},
+	)
 	return err
 }
 

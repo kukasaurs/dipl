@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-var RedisCacheDuration = 5 * time.Minute
+var RedisCacheDuration = 30 * time.Second
 
 func GetFromCache(ctx context.Context, client *redis.Client, key string) (string, error) {
 	return client.Get(ctx, key).Result()

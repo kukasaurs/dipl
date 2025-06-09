@@ -42,7 +42,7 @@ func NewCacheRefresher(orderService *orderService, redis *redis.Client) *CacheRe
 }
 
 func (cr *CacheRefresher) Start(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second) // обновлять каждые 5 минут
+	ticker := time.NewTicker(10 * time.Second)
 	go func() {
 		for {
 			select {
@@ -71,7 +71,7 @@ func (cr *CacheRefresher) refreshAllOrdersCache(ctx context.Context) {
 		return
 	}
 
-	err = cr.redis.Set(ctx, "all_orders", data, 30*time.Second).Err()
+	err = cr.redis.Set(ctx, "all_orders", data, 10*time.Second).Err()
 	if err != nil {
 		log.Printf("[CACHE] Failed to set all_orders cache: %v", err)
 		return

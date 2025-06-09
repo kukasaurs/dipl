@@ -175,15 +175,36 @@ func (s *orderService) AssignCleaner(ctx context.Context, id primitive.ObjectID,
 // UnassignCleaner вызывает RemoveCleanerFromOrder для одного клинера.
 // Если передавать empty string — можно вызвать repo.UnassignCleaner, но лучше явно убирать одного.
 func (s *orderService) UnassignCleaner(ctx context.Context, id primitive.ObjectID, cleanerID string) error {
-	order, err := s.repo.GetByID(ctx, id)
+	// 1) Берём изначальный заказ (для clearCache)
+	origOrder, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
+
+	// 2) Убираем клинера (больше не меняем статус здесь)
 	if err := s.repo.RemoveCleanerFromOrder(ctx, id, cleanerID); err != nil {
 		return err
 	}
-	// Если после удаления нет ни одного клинера, статус будет внутри репозитория переведён в pending.
-	s.clearCache(ctx, order.ClientID)
+
+	// 3) Перезапрашиваем заказ после удаления
+	updatedOrder, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// 4) Если после удаления не осталось ни одного клинера — переводим в paid
+	if len(updatedOrder.CleanerID) == 0 {
+		updatedOrder.Status = models.StatusPaid
+		updatedOrder.UpdatedAt = time.Now() // не забудьте импортировать time
+
+		if err := s.repo.Update(ctx, updatedOrder); err != nil {
+			return fmt.Errorf("failed to set status to paid: %w", err)
+		}
+	}
+	// иначе — статус остаётся прежним (assigned)
+
+	// 5) Сбрасываем кеш по клиенту
+	s.clearCache(ctx, origOrder.ClientID)
 	return nil
 }
 
@@ -229,16 +250,6 @@ func (s *orderService) GetOrderByID(ctx context.Context, id primitive.ObjectID) 
 
 // GetAllOrders без изменений.
 func (s *orderService) GetAllOrders(ctx context.Context) ([]models.Order, error) {
-	cacheKey := "all_orders"
-	var result []models.Order
-	if data, err := s.redis.Get(ctx, cacheKey).Result(); err == nil {
-		if err := json.Unmarshal([]byte(data), &result); err == nil {
-			for i := range result {
-				s.enrichWithServiceDetails(ctx, &result[i])
-			}
-			return result, nil
-		}
-	}
 	orders, err := s.repo.GetAll(ctx)
 	if err != nil {
 		return nil, err
@@ -246,9 +257,7 @@ func (s *orderService) GetAllOrders(ctx context.Context) ([]models.Order, error)
 	for i := range orders {
 		s.enrichWithServiceDetails(ctx, &orders[i])
 	}
-	if data, err := json.Marshal(orders); err == nil {
-		s.redis.Set(ctx, cacheKey, data, 30*time.Second)
-	}
+
 	return orders, nil
 }
 
